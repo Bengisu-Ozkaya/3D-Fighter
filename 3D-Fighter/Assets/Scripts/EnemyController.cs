@@ -17,7 +17,10 @@ public class EnemyController : MonoBehaviour
 
     // Saldırı Yapay Zekası
     [Header("Saldırı & Takip Ayarları")]
-    [SerializeField] float attackRange = 1.6f;       // Yumruk mesafesi
+    [Tooltip("Düşmanın saldırıya geçeceği yaklaşma mesafesi")]
+    [SerializeField] float attackRange = 1.1f;       // Yumruk yaklaşma mesafesi
+    [Tooltip("Yumruğun temas edebileceği maksimum mesafe (Oyuncu geri kaçtıysa ıskalar)")]
+    [SerializeField] float maxHitDistance = 1.25f;
     [SerializeField] float attackCooldown = 1.8f;    // Kaç saniyede bir saldıracak
     [SerializeField] float moveSpeed = 1.2f;        // Oyuncuya yaklaşma hızı (0 yapılırsa yerinde durur)
     [SerializeField] float attackDamage = 10f;      // Player'a vereceği hasar
@@ -31,6 +34,11 @@ public class EnemyController : MonoBehaviour
         if (maxHealth <= 0) maxHealth = 30f;
         if (health <= 0) health = maxHealth;
         if (enemyAnimator == null) enemyAnimator = GetComponent<Animator>();
+        if (enemyAnimator != null) enemyAnimator.applyRootMotion = false;
+
+        // Kararlı yakın dövüş mesafesi ayarı
+        if (attackRange > 1.25f) attackRange = 1.1f;
+        if (maxHitDistance <= 0f || maxHitDistance > 1.4f) maxHitDistance = 1.25f;
 
         //Player
         playerController = FindObjectOfType<PlayerController>();
@@ -40,8 +48,34 @@ public class EnemyController : MonoBehaviour
         }
     }
 
+    void LateUpdate()
+    {
+        // Düşman ayaktayken animasyonların dikey kaydırmasını engeller ve Y pozisyonunu kesinlikle 0'a kilitler
+        if (!isDead)
+        {
+            Vector3 pos = transform.position;
+            if (pos.y != 0f)
+            {
+                pos.y = 0f;
+                transform.position = pos;
+            }
+        }
+    }
+
     private bool isDead = false;
     public bool IsDead => isDead;
+
+    public void SetPlayerDead(bool dead)
+    {
+        if (enemyAnimator != null)
+        {
+            enemyAnimator.SetBool("isDeadEnemy", dead);
+            if (!dead)
+            {
+                enemyAnimator.CrossFadeInFixedTime("Idle", 0.2f);
+            }
+        }
+    }
 
     void Update()
     {
@@ -51,12 +85,26 @@ public class EnemyController : MonoBehaviour
             return;
         }
 
-        if (!isDead && playerTransform != null)
+        if (isDead) return;
+
+        if (playerTransform != null)
         {
-            // Eğer oyuncu öldüyse saldırmayı ve hareketi durdur, Idle'da bekle
+            // Eğer oyuncu öldüyse saldırmayı ve hareketi durdur, Show Pose'da bekle
             if (playerController != null && playerController.IsDead)
             {
+                if (enemyAnimator != null)
+                {
+                    enemyAnimator.SetBool("isDeadEnemy", true);
+                }
                 return;
+            }
+            else
+            {
+                if (enemyAnimator != null && enemyAnimator.GetBool("isDeadEnemy"))
+                {
+                    enemyAnimator.SetBool("isDeadEnemy", false);
+                    enemyAnimator.CrossFadeInFixedTime("Idle", 0.2f);
+                }
             }
 
             CombatPlayer();
@@ -79,7 +127,8 @@ public class EnemyController : MonoBehaviour
         {
             if (moveSpeed > 0)
             {
-                transform.position = Vector3.MoveTowards(transform.position, playerTransform.position, moveSpeed * Time.deltaTime);
+                Vector3 target = new Vector3(playerTransform.position.x, 0f, playerTransform.position.z);
+                transform.position = Vector3.MoveTowards(transform.position, target, moveSpeed * Time.deltaTime);
             }
         }
 
@@ -114,9 +163,18 @@ public class EnemyController : MonoBehaviour
         if (!isDead && playerTransform != null && playerController != null && !playerController.IsDead)
         {
             float currentDistance = Vector3.Distance(transform.position, playerTransform.position);
-            if (currentDistance <= attackRange + 0.5f)
+            Vector3 dirToPlayer = (playerTransform.position - transform.position).normalized;
+            dirToPlayer.y = 0f;
+            float dot = Vector3.Dot(transform.forward, dirToPlayer);
+
+            // Sadece oyuncu gerçekten vuruş mesafesindeyse (<= maxHitDistance) ve düşman oyuncuya bakıyorsa hasar ver
+            if (currentDistance <= maxHitDistance && dot > 0.35f)
             {
                 playerController.TakeDamage(attackDamage);
+            }
+            else
+            {
+                Debug.Log("<color=yellow>[DÜŞMAN ISKALADI]</color> Oyuncu menzil dışına çıktı!");
             }
         }
     }
@@ -173,6 +231,16 @@ public class EnemyController : MonoBehaviour
         isDead = true;
 
         Debug.Log($"<color=red>[DÜŞMAN YENİLDİ]</color> {gameObject.name} nakavt oldu!");
+
+        // Oyuncuya düşmanın öldüğünü bildir (Oyuncu Show Pose'a girsin)
+        if (playerController == null)
+        {
+            playerController = FindObjectOfType<PlayerController>();
+        }
+        if (playerController != null && !playerController.IsDead)
+        {
+            playerController.SetEnemyDead(true);
+        }
 
         StartCoroutine(WaitPunch());
 

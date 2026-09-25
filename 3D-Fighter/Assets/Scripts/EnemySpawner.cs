@@ -44,6 +44,13 @@ public class EnemySpawner : MonoBehaviour
         {
             GameObject newEnemy = Instantiate(enemyPrefab, new Vector3(0,0,2.6f), transform.rotation);
             enemyController = newEnemy.GetComponent<EnemyController>();
+
+            // Sahnedeki oyuncuyu bul ve yeni düşmanı tanıtıp Show Pose'u sonlandır
+            PlayerController player = FindObjectOfType<PlayerController>();
+            if (player != null)
+            {
+                player.OnEnemySpawned(enemyController);
+            }
         }
         else
         {

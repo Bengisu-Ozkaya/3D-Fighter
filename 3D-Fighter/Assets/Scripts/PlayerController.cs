@@ -12,15 +12,21 @@ public class PlayerController : MonoBehaviour
     [SerializeField] float rotationSpeed = 14f;
 
     [Header("Yumruk Hassasiyeti (Mesafe & Boyut)")]
-    [Tooltip("Yumruğun temas küresinin yarıçapı. 0.25 - 0.30 arası eldiven ve eklemleri tam kapsar.")]
-    [Range(0.15f, 0.45f)]
-    [SerializeField] float punchRadius = 0.28f;
+    [Tooltip("Yumruğun temas küresinin yarıçapı. 0.15 - 0.25 arası eldiven ve eklemleri tam kapsar.")]
+    [Range(0.12f, 0.35f)]
+    [SerializeField] float punchRadius = 0.20f;
+
+    [Tooltip("Yumruğun rakibe ulaşabileceği azami mesafe (metre). Bu mesafeden uzaktaki rakiplere hasar verilemez.")]
+    [SerializeField] float maxPunchRange = 1.25f;
 
     [Tooltip("Yumruk atarken karakterin ileriye doğru attığı doğal boks adımı mesafesi (metre)")]
     [SerializeField] float punchStepDistance = 0.08f;
 
     [Tooltip("Yumruğun aktif kalıp temas arayacağı süre (saniye). Boks animasyonunun uzanma ve geri çekilme aralığı.")]
-    [SerializeField] float punchActiveDuration = 0.50f;
+    [SerializeField] float punchActiveDuration = 0.40f;
+
+    [Tooltip("Bir yumruğun baştan sona tamamlanma ve gard pozisyonuna dönüş süresi (saniye). Bu süre dolmadan yeni yumruk atılamaz.")]
+    [SerializeField] float punchDuration = 0.55f;
 
     [SerializeField] float punchDamage = 10f;
     [SerializeField] LayerMask targetLayers = ~0;
@@ -37,10 +43,14 @@ public class PlayerController : MonoBehaviour
     private bool isDead = false;
     public bool IsDead => isDead;
 
+    private bool isEnemyDead = false;
+    public bool IsEnemyDead => isEnemyDead;
+
     private Vector3 startPosition;
     private Quaternion startRotation;
 
     bool isPunchRight = false;
+    bool isPunching = false;
     bool isPunchActive = false;
     bool hasHitCurrentPunch = false;
 
@@ -58,6 +68,10 @@ public class PlayerController : MonoBehaviour
         {
             playerAnim = GetComponent<Animator>();
         }
+        if (playerAnim != null)
+        {
+            playerAnim.applyRootMotion = false;
+        }
 
         // 2. Humanoid el kemiklerini otomatik bul ve bağla
         BindFistBones();
@@ -67,6 +81,10 @@ public class PlayerController : MonoBehaviour
         {
             enemyController = FindObjectOfType<EnemyController>();
         }
+
+        // Kararlı yakın dövüş mesafesi kalibrasyonu
+        if (punchRadius > 0.22f) punchRadius = 0.20f;
+        if (maxPunchRange <= 0f || maxPunchRange > 1.4f) maxPunchRange = 1.25f;
     }
 
     void BindFistBones()
@@ -109,16 +127,33 @@ public class PlayerController : MonoBehaviour
 
     void Update()
     {
-        // Oyuncu öldüyse hareket edemesin ve yumruk atamasın
-        if (isDead) return;
+        // Oyuncu öldüyse veya karşı taraf ölüp Show Pose yapılıyorsa hareket edip yumruk atamasın
+        if (isDead || isEnemyDead) return;
 
         // Karakter Hareketi
         HandleMovement();
 
-        // Yumruk Tuşu (Space)
+        // Yumruk Tuşu (Space) - Önceki yumruk tamamen bitmeden yeni yumruk tetiklenemez
         if (Input.GetKeyDown(KeyCode.Space))
         {
-            ExecutePunch();
+            if (!isPunching)
+            {
+                ExecutePunch();
+            }
+        }
+    }
+
+    void LateUpdate()
+    {
+        // Karakter ayaktayken animasyonların dikey kaydırmasını engeller ve Y pozisyonunu kesinlikle 0'a kilitler
+        if (!isDead)
+        {
+            Vector3 pos = transform.position;
+            if (pos.y != 0f)
+            {
+                pos.y = 0f;
+                transform.position = pos;
+            }
         }
     }
 
@@ -137,11 +172,37 @@ public class PlayerController : MonoBehaviour
         if (moveDir != Vector3.zero)
         {
             // 1. Pozisyonu hareket yönünde ilerlet (Dünya koordinatlarında)
-            transform.position += moveDir * speed * Time.deltaTime;
+            Vector3 newPos = transform.position + moveDir * speed * Time.deltaTime;
+            newPos.y = 0f;
+            transform.position = newPos;
 
-            // 2. Karakterin yönünü hareket yönüne doğru yumuşakça çevir
-            Quaternion targetRot = Quaternion.LookRotation(moveDir);
-            transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * rotationSpeed);
+            // 2. Karakterin rotasyonu:
+            // S tuşuna basıldığında (v < -0.1f) arkasını kameraya dönmesin;
+            // yüzü rakibe/ileriye dönük kalsın (sırtı kameraya dönük şekilde geri gitsin)
+            Vector3 facingDir;
+            if (v < -0.1f)
+            {
+                if (enemyController != null && !enemyController.IsDead)
+                {
+                    facingDir = (enemyController.transform.position - transform.position);
+                    facingDir.y = 0f;
+                    if (facingDir == Vector3.zero) facingDir = Vector3.forward;
+                }
+                else
+                {
+                    facingDir = Vector3.forward;
+                }
+            }
+            else
+            {
+                facingDir = moveDir;
+            }
+
+            if (facingDir != Vector3.zero)
+            {
+                Quaternion targetRot = Quaternion.LookRotation(facingDir.normalized);
+                transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * rotationSpeed);
+            }
         }
 
         // 3. Animasyon parametrelerini güncelle
@@ -173,6 +234,8 @@ public class PlayerController : MonoBehaviour
 
     void ExecutePunch()
     {
+        if (isPunching) return;
+        isPunching = true;
         hasHitCurrentPunch = false;
 
         // Yumruk atarken yakında rakip varsa yüzünü doğrudan rakibe hizala
@@ -190,7 +253,6 @@ public class PlayerController : MonoBehaviour
         isPunchRight = !isPunchRight;
 
         // Boks adımı ve vuruş kontrolünü başlat
-        StopCoroutine(nameof(PunchRoutine));
         StartCoroutine(PunchRoutine(fistIndex));
     }
 
@@ -213,21 +275,64 @@ public class PlayerController : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Karşı taraf (Düşman) öldüğünde veya yeniden doğduğunda çağrılır
+    /// </summary>
+    public void SetEnemyDead(bool dead)
+    {
+        isEnemyDead = dead;
+        if (playerAnim != null)
+        {
+            playerAnim.SetBool("isDeadEnemy", dead);
+            if (dead)
+            {
+                // Yürüyüş animasyonlarını sıfırla ki Show Pose'a temiz geçsin
+                playerAnim.SetBool("leftMove", false);
+                playerAnim.SetBool("rightMove", false);
+
+                // Devam eden yumruk coroutine'ini sıfırla
+                isPunching = false;
+                isPunchActive = false;
+            }
+            else
+            {
+                // Düşman yeniden doğdu: Show Pose animasyonunu derhal kes ve Idle'a yumuşakça geçiş yap!
+                playerAnim.CrossFadeInFixedTime("Idle", 0.2f);
+                isPunching = false;
+                isPunchActive = false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// EnemySpawner yeni düşman yarattığında oyuncuyu bilgilendirir
+    /// </summary>
+    public void OnEnemySpawned(EnemyController newEnemy)
+    {
+        enemyController = newEnemy;
+        SetEnemyDead(false);
+    }
+
     IEnumerator PunchRoutine(int fistIndex)
     {
+        float stepDuration = 0.16f;
         // 1. Boksör Hamlesi (Step-in): Yumruk atarken öne doğru hafif ve doğal bir adım at (SmoothStep ile sarsıntısız)
         if (punchStepDistance > 0f)
         {
-            float stepDuration = 0.16f;
             float stepTimer = 0f;
-            Vector3 startPos = transform.position;
-            Vector3 stepTarget = startPos + transform.forward * punchStepDistance;
+            Vector3 startPos = new Vector3(transform.position.x, 0f, transform.position.z);
+            Vector3 fwd = transform.forward;
+            fwd.y = 0f;
+            Vector3 stepTarget = startPos + fwd.normalized * punchStepDistance;
+            stepTarget.y = 0f;
             while (stepTimer < stepDuration)
             {
                 stepTimer += Time.deltaTime;
                 float t = Mathf.Clamp01(stepTimer / stepDuration);
                 float smoothT = Mathf.SmoothStep(0f, 1f, t);
-                transform.position = Vector3.Lerp(startPos, stepTarget, smoothT);
+                Vector3 newPos = Vector3.Lerp(startPos, stepTarget, smoothT);
+                newPos.y = 0f;
+                transform.position = newPos;
                 yield return null;
             }
         }
@@ -248,16 +353,43 @@ public class PlayerController : MonoBehaviour
         }
 
         isPunchActive = false;
+
+        // 3. Kolun geri çekilmesi ve boksörün garda dönüş süresi (Animasyonun bitmesini bekle)
+        float totalElapsed = (punchStepDistance > 0f ? stepDuration : 0f) + activeTimer;
+        float remainingDuration = punchDuration - totalElapsed;
+        if (remainingDuration > 0f)
+        {
+            yield return new WaitForSeconds(remainingDuration);
+        }
+
+        // Yumruk tamamen bitti, artık sıradaki yumruk atılabilir!
+        isPunching = false;
     }
 
     /// <summary>
-    /// Sadece elin eklem/eldiven kısmı fiziken rakip collider'ına girdiğinde hasar verir.
+    /// Sadece elin eklem/eldiven kısmı fiziken rakip collider'ına girdiğinde ve mesafe uygunsa hasar verir.
     /// </summary>
     void CheckPhysicalFistContact(int fistIndex)
     {
-        Vector3 fistPos = GetFistPosition(fistIndex);
+        EnemyController enemy = enemyController;
+        if (enemy == null || enemy.IsDead)
+        {
+            enemy = FindObjectOfType<EnemyController>();
+        }
 
-        // Elin etrafındaki temas küresini tara (0 GC)
+        if (enemy == null || enemy.IsDead) return;
+
+        // 1. Kararlı Mesafe Sınırı: Karakter ile düşman arasındaki mesafe maxPunchRange'den büyükse hasar verilemez
+        float distToEnemy = Vector3.Distance(transform.position, enemy.transform.position);
+        if (distToEnemy > maxPunchRange) return;
+
+        // 2. Yön/Açı Kontrolü: Oyuncunun yüzü düşmana dönük olmalı (arkası veya ters yön dönükken vuramaz)
+        Vector3 dirToEnemy = (enemy.transform.position - transform.position).normalized;
+        dirToEnemy.y = 0f;
+        if (Vector3.Dot(transform.forward, dirToEnemy) < 0.30f) return;
+
+        // 3. Fiziksel temas alanı kontrolü (Eldiven küresi)
+        Vector3 fistPos = GetFistPosition(fistIndex);
         int hitCount = Physics.OverlapSphereNonAlloc(fistPos, punchRadius, hitColliders, targetLayers);
 
         for (int i = 0; i < hitCount; i++)
@@ -265,27 +397,15 @@ public class PlayerController : MonoBehaviour
             Collider col = hitColliders[i];
             if (col == null || col.transform.root == transform.root) continue;
 
-            if (col.TryGetComponent<EnemyController>(out var enemy) ||
-                col.transform.root.TryGetComponent<EnemyController>(out enemy) ||
+            if (col.transform.root == enemy.transform ||
+                col.GetComponentInParent<EnemyController>() == enemy ||
+                col.gameObject == enemy.gameObject ||
                 col.CompareTag("Enemy"))
             {
-                if (enemy == null && enemyController != null)
-                {
-                    enemy = enemyController;
-                }
-
-                if (enemy == null)
-                {
-                    enemy = FindObjectOfType<EnemyController>();
-                }
-
-                if (enemy != null)
-                {
-                    hasHitCurrentPunch = true;
-                    isPunchActive = false;
-                    enemy.TakeDamage(punchDamage);
-                    return;
-                }
+                hasHitCurrentPunch = true;
+                isPunchActive = false;
+                enemy.TakeDamage(punchDamage);
+                return;
             }
         }
     }
@@ -330,6 +450,10 @@ public class PlayerController : MonoBehaviour
     {
         if (isDead) return;
 
+        isPunching = false;
+        isPunchActive = false;
+        StopCoroutine(nameof(PunchRoutine));
+
         StartCoroutine(WaitPunch());
         playerHealth -= damageAmount;
         Debug.Log($"<color=cyan>[OYUNCU DARBE ALDI]</color> Kalan Can: {playerHealth}");
@@ -352,11 +476,25 @@ public class PlayerController : MonoBehaviour
         if (isDead) return;
         isDead = true;
 
+        isPunching = false;
+        isPunchActive = false;
+        StopCoroutine(nameof(PunchRoutine));
+
         Debug.Log("<color=red>[OYUNCU NAKAVT OLDU!]</color>");
 
         if (playerAnim != null)
         {
             playerAnim.SetBool("isDead", true);
+        }
+
+        // Düşmana oyuncunun öldüğünü bildir (Düşman Show Pose'a geçsin)
+        if (enemyController == null)
+        {
+            enemyController = FindObjectOfType<EnemyController>();
+        }
+        if (enemyController != null && !enemyController.IsDead)
+        {
+            enemyController.SetPlayerDead(true);
         }
 
         StartCoroutine(WaitPos());
@@ -377,7 +515,7 @@ public class PlayerController : MonoBehaviour
 
         // Canı ve pozisyonu sıfırla
         playerHealth = maxPlayerHealth;
-        transform.position = new Vector3(startPosition.x, -0.26f, startPosition.z);
+        transform.position = new Vector3(startPosition.x, 0f, startPosition.z);
         transform.rotation = startRotation;
 
         if (playerAnim != null)
@@ -392,6 +530,17 @@ public class PlayerController : MonoBehaviour
         }
 
         isDead = false;
+
+        // Düşmana oyuncunun yeniden doğduğunu bildir (Düşman Show Pose'dan çıkıp Idle'a dönsün)
+        if (enemyController == null)
+        {
+            enemyController = FindObjectOfType<EnemyController>();
+        }
+        if (enemyController != null && !enemyController.IsDead)
+        {
+            enemyController.SetPlayerDead(false);
+        }
+
         Debug.Log("<color=green>[OYUNCU YENİDEN DOĞDU!]</color>");
     }
 

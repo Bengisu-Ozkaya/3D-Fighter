@@ -1308,7 +1308,7 @@ Transform:
   m_GameObject: {fileID: 843151221}
   serializedVersion: 2
   m_LocalRotation: {x: 0.17364816, y: 0, z: 0, w: 0.9848078}
-  m_LocalPosition: {x: 0, y: 1.2, z: -0.9}
+  m_LocalPosition: {x: 0, y: 1.2, z: -1.1}
   m_LocalScale: {x: 0.5, y: 0.5, z: 0.5}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1386,12 +1386,17 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   target: {fileID: 77061403}
-  offset: {x: 0, y: 1.2, z: -0.9}
+  offset: {x: 0, y: 1.2, z: -1.1}
   smoothTime: 0.12
   stabilizeVerticalMovement: 1
   useFixedAngle: 1
   fixedPitchAngle: 20
   rotationSmoothTime: 0.2
+  knockoutOffset: {x: 0, y: 1.6, z: -0.5}
+  knockoutPitchAngle: 90
+  knockoutYAngle: 180
+  knockoutSmoothTime: 5
+  autoCenterOnFallenBody: 1
   detachFromParentOnStart: 1
 --- !u!1001 &883345289
 PrefabInstance:
@@ -2428,8 +2433,10 @@ MonoBehaviour:
   speed: 2
   rotationSpeed: 14
   punchRadius: 0.28
+  maxPunchRange: 1.25
   punchStepDistance: 0.08
   punchActiveDuration: 0.5
+  punchDuration: 0.55
   punchDamage: 10
   targetLayers:
     serializedVersion: 2
@@ -3493,8 +3500,10 @@ MonoBehaviour:
   speed: 1
   rotationSpeed: 14
   punchRadius: 0.28
+  maxPunchRange: 1.25
   punchStepDistance: 0.18
   punchActiveDuration: 0.5
+  punchDuration: 0.55
   punchDamage: 10
   targetLayers:
     serializedVersion: 2
