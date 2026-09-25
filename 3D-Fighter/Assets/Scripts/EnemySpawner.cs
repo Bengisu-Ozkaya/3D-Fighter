@@ -42,7 +42,7 @@ public class EnemySpawner : MonoBehaviour
     {
         if (enemyPrefab != null)
         {
-            GameObject newEnemy = Instantiate(enemyPrefab, transform.position, transform.rotation);
+            GameObject newEnemy = Instantiate(enemyPrefab, new Vector3(0,0,2.6f), transform.rotation);
             enemyController = newEnemy.GetComponent<EnemyController>();
         }
         else

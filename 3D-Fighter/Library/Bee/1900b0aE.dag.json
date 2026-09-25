@@ -109,8 +109,8 @@
       "DisplayName": "Writing Assembly-CSharp.UnityAdditionalFile.txt",
       "ActionType": "WriteFile",
       "PayloadOffset": 100,
-      "PayloadLength": 46,
-      "PayloadDebugContentSnippet": "D:\\UnityProjects\\3D-Fighters\\N",
+      "PayloadLength": 61,
+      "PayloadDebugContentSnippet": "C:\\Users\\bngs0\\OneDrive\\Belgel",
       "Inputs": [],
       "Outputs": [
         "Library/Bee/artifacts/1900b0aE.dag/Assembly-CSharp.UnityAdditionalFile.txt"
@@ -121,8 +121,8 @@
       "Annotation": "WriteText Library/Bee/artifacts/1900b0aE.dag/Assembly-CSharp.rsp",
       "DisplayName": "Writing Assembly-CSharp.rsp",
       "ActionType": "WriteFile",
-      "PayloadOffset": 232,
-      "PayloadLength": 25079,
+      "PayloadOffset": 247,
+      "PayloadLength": 25112,
       "PayloadDebugContentSnippet": "-target:library\n-out:\"Library/",
       "Inputs": [],
       "Outputs": [
@@ -134,7 +134,7 @@
       "Annotation": "WriteText Library/Bee/artifacts/1900b0aE.dag/Assembly-CSharp.rsp2",
       "DisplayName": "Writing Assembly-CSharp.rsp2",
       "ActionType": "WriteFile",
-      "PayloadOffset": 25398,
+      "PayloadOffset": 25446,
       "PayloadLength": 0,
       "PayloadDebugContentSnippet": "",
       "Inputs": [],
@@ -355,6 +355,7 @@
         "D:/Unity/Unity-2022/Editor/Data/NetStandard/ref/2.1.0/netstandard.dll",
         "Assets/Scripts/EnemyController.cs",
         "Assets/Scripts/EnemySpawner.cs",
+        "Assets/Scripts/FollowPlayer.cs",
         "Assets/Scripts/PlayerController.cs",
         "D:/Unity/Unity-2022/Editor/Data/Tools/Unity.SourceGenerators/Unity.Properties.SourceGenerator.dll",
         "D:/Unity/Unity-2022/Editor/Data/Tools/Unity.SourceGenerators/Unity.SourceGenerators.dll",
@@ -1731,7 +1732,7 @@
       "Annotation": "WriteText Library/Bee/artifacts/1900b0aE.dag/Assembly-CSharp.dll.mvfrm.rsp",
       "DisplayName": "Writing Assembly-CSharp.dll.mvfrm.rsp",
       "ActionType": "WriteFile",
-      "PayloadOffset": 25494,
+      "PayloadOffset": 25542,
       "PayloadLength": 7181,
       "PayloadDebugContentSnippet": "Library\\Bee\\artifacts\\mvdfrm\\U",
       "Inputs": [],
@@ -1957,7 +1958,7 @@
     {
       "Annotation": "BuildPlayerDataGenerator Library/BuildPlayerData/Editor/TypeDb-All.json",
       "DisplayName": "BuildPlayerDataGenerator TypeDb-All",
-      "Action": "\"D:/Unity/Unity-2022/Editor/Data\\Tools\\netcorerun\\netcorerun.exe\" \"D:/Unity/Unity-2022/Editor/Data/Tools/BuildPlayerDataGenerator/BuildPlayerDataGenerator.exe\" -a=\"D:\\UnityProjects\\3D-Fighters\\New Unity Project\\Library\\ScriptAssemblies\\Assembly-CSharp.dll\" -s=\"D:\\Unity\\Unity-2022\\Editor\\Data\\Managed\\UnityEngine\" -s=\"D:\\Unity\\Unity-2022\\Editor\\Data\\NetStandard\\compat\\2.1.0\\shims\\netfx\" -s=\"D:\\Unity\\Unity-2022\\Editor\\Data\\NetStandard\\compat\\2.1.0\\shims\\netstandard\" -s=\"D:\\Unity\\Unity-2022\\Editor\\Data\\NetStandard\\Extensions\\2.0.0\" -s=\"D:\\Unity\\Unity-2022\\Editor\\Data\\NetStandard\\ref\\2.1.0\" -s=\"D:\\UnityProjects\\3D-Fighters\\New Unity Project\\Library\\ScriptAssemblies\" -o=\"Library/BuildPlayerData/Editor\" -rn=\"\" -tn=\"TypeDb-All.json\"",
+      "Action": "\"D:/Unity/Unity-2022/Editor/Data\\Tools\\netcorerun\\netcorerun.exe\" \"D:/Unity/Unity-2022/Editor/Data/Tools/BuildPlayerDataGenerator/BuildPlayerDataGenerator.exe\" -a=\"C:\\Users\\bngs0\\OneDrive\\Belgeler\\GitHub\\3D-Fighter\\3D-Fighter\\Library\\ScriptAssemblies\\Assembly-CSharp.dll\" -s=\"D:\\Unity\\Unity-2022\\Editor\\Data\\Managed\\UnityEngine\" -s=\"D:\\Unity\\Unity-2022\\Editor\\Data\\NetStandard\\compat\\2.1.0\\shims\\netfx\" -s=\"D:\\Unity\\Unity-2022\\Editor\\Data\\NetStandard\\compat\\2.1.0\\shims\\netstandard\" -s=\"D:\\Unity\\Unity-2022\\Editor\\Data\\NetStandard\\Extensions\\2.0.0\" -s=\"D:\\Unity\\Unity-2022\\Editor\\Data\\NetStandard\\ref\\2.1.0\" -s=\"C:\\Users\\bngs0\\OneDrive\\Belgeler\\GitHub\\3D-Fighter\\3D-Fighter\\Library\\ScriptAssemblies\" -o=\"Library/BuildPlayerData/Editor\" -rn=\"\" -tn=\"TypeDb-All.json\"",
       "Inputs": [
         "D:/Unity/Unity-2022/Editor/Data/Tools/netcorerun/netcorerun.exe",
         "D:/Unity/Unity-2022/Editor/Data/Tools/BuildPlayerDataGenerator/BuildPlayerDataGenerator.exe",
@@ -2136,6 +2137,6 @@
   "SharedResources": [],
   "Scanners": [],
   "Identifier": "Library/Bee/1900b0aE.dag.json",
-  "PayloadsFile": "D:/UnityProjects/3D-Fighters/New Unity Project/Library/Bee/1900b0aE.dag.payloads",
+  "PayloadsFile": "C:/Users/bngs0/OneDrive/Belgeler/GitHub/3D-Fighter/3D-Fighter/Library/Bee/1900b0aE.dag.payloads",
   "RelativePathToRoot": "../.."
 }

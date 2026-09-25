@@ -329,6 +329,7 @@
 -analyzer:"D:/Unity/Unity-2022/Editor/Data/Tools/Unity.SourceGenerators/Unity.SourceGenerators.dll"
 "Assets/Scripts/EnemyController.cs"
 "Assets/Scripts/EnemySpawner.cs"
+"Assets/Scripts/FollowPlayer.cs"
 "Assets/Scripts/PlayerController.cs"
 -langversion:9.0
 /deterministic

@@ -8,6 +8,8 @@ public class PlayerController : MonoBehaviour
     [SerializeField] Animator playerAnim;
     [SerializeField] EnemyController enemyController;
     [SerializeField] float speed = 2f;
+    [Tooltip("Karakterin hareket yönüne doğru yumuşak dönme hızı")]
+    [SerializeField] float rotationSpeed = 14f;
 
     [Header("Yumruk Hassasiyeti (Mesafe & Boyut)")]
     [Tooltip("Yumruğun temas küresinin yarıçapı. 0.25 - 0.30 arası eldiven ve eklemleri tam kapsar.")]
@@ -15,7 +17,7 @@ public class PlayerController : MonoBehaviour
     [SerializeField] float punchRadius = 0.28f;
 
     [Tooltip("Yumruk atarken karakterin ileriye doğru attığı doğal boks adımı mesafesi (metre)")]
-    [SerializeField] float punchStepDistance = 0.18f;
+    [SerializeField] float punchStepDistance = 0.08f;
 
     [Tooltip("Yumruğun aktif kalıp temas arayacağı süre (saniye). Boks animasyonunun uzanma ve geri çekilme aralığı.")]
     [SerializeField] float punchActiveDuration = 0.50f;
@@ -47,7 +49,8 @@ public class PlayerController : MonoBehaviour
 
     void Start()
     {
-        startPosition = transform.position;
+        startPosition = new Vector3(transform.position.x, 0f, transform.position.z);
+        transform.position = startPosition;
         startRotation = transform.rotation;
 
         // 1. Animator'ı bağla
@@ -79,6 +82,29 @@ public class PlayerController : MonoBehaviour
                 leftFist = playerAnim.GetBoneTransform(HumanBodyBones.LeftHand);
             }
         }
+
+        // Yedek: Kemik hiyerarşisinde isim ile arama (Mixamo Ch43 ve benzeri modeller için)
+        if (rightFist == null)
+        {
+            rightFist = FindDeepChild(transform, "RightHand") ?? FindDeepChild(transform, "mixamorig:RightHand");
+        }
+        if (leftFist == null)
+        {
+            leftFist = FindDeepChild(transform, "LeftHand") ?? FindDeepChild(transform, "mixamorig:LeftHand");
+        }
+    }
+
+    Transform FindDeepChild(Transform parent, string boneName)
+    {
+        foreach (Transform child in parent)
+        {
+            if (child.name.Equals(boneName, System.StringComparison.OrdinalIgnoreCase))
+                return child;
+            Transform result = FindDeepChild(child, boneName);
+            if (result != null)
+                return result;
+        }
+        return null;
     }
 
     void Update()
@@ -98,27 +124,59 @@ public class PlayerController : MonoBehaviour
 
     void HandleMovement()
     {
-        if (Input.GetKey(KeyCode.W))
+        float h = 0f;
+        float v = 0f;
+
+        if (Input.GetKey(KeyCode.D)) h += 1f;
+        if (Input.GetKey(KeyCode.A)) h -= 1f;
+        if (Input.GetKey(KeyCode.W)) v += 1f;
+        if (Input.GetKey(KeyCode.S)) v -= 1f;
+
+        Vector3 moveDir = new Vector3(h, 0f, v).normalized;
+
+        if (moveDir != Vector3.zero)
         {
-            transform.Translate(Vector3.forward * speed * Time.deltaTime);
+            // 1. Pozisyonu hareket yönünde ilerlet (Dünya koordinatlarında)
+            transform.position += moveDir * speed * Time.deltaTime;
+
+            // 2. Karakterin yönünü hareket yönüne doğru yumuşakça çevir
+            Quaternion targetRot = Quaternion.LookRotation(moveDir);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * rotationSpeed);
         }
-        if (Input.GetKey(KeyCode.S))
+
+        // 3. Animasyon parametrelerini güncelle
+        if (playerAnim != null)
         {
-            transform.Translate(-Vector3.forward * speed * Time.deltaTime);
-        }
-        if (Input.GetKey(KeyCode.A))
-        {
-            transform.Translate(Vector3.left * speed * Time.deltaTime);
-        }
-        if (Input.GetKey(KeyCode.D))
-        {
-            transform.Translate(-Vector3.left * speed * Time.deltaTime);
+            if (h < -0.1f)
+            {
+                playerAnim.SetBool("leftMove", true);
+                playerAnim.SetBool("rightMove", false);
+            }
+            else if (h > 0.1f)
+            {
+                playerAnim.SetBool("rightMove", true);
+                playerAnim.SetBool("leftMove", false);
+            }
+            else if (Mathf.Abs(v) > 0.1f)
+            {
+                // Düz ileri veya geri giderken adım animasyonunu oynat
+                playerAnim.SetBool("leftMove", false);
+                playerAnim.SetBool("rightMove", true);
+            }
+            else
+            {
+                playerAnim.SetBool("leftMove", false);
+                playerAnim.SetBool("rightMove", false);
+            }
         }
     }
 
     void ExecutePunch()
     {
         hasHitCurrentPunch = false;
+
+        // Yumruk atarken yakında rakip varsa yüzünü doğrudan rakibe hizala
+        FaceOpponentOnPunch();
 
         int fistIndex = isPunchRight ? 1 : 0;
         string triggerName = isPunchRight ? "PunchLeft" : "PunchRight";
@@ -136,17 +194,40 @@ public class PlayerController : MonoBehaviour
         StartCoroutine(PunchRoutine(fistIndex));
     }
 
+    void FaceOpponentOnPunch()
+    {
+        EnemyController enemy = enemyController;
+        if (enemy == null)
+        {
+            enemy = FindObjectOfType<EnemyController>();
+        }
+
+        if (enemy != null && !enemy.IsDead)
+        {
+            Vector3 dirToEnemy = enemy.transform.position - transform.position;
+            dirToEnemy.y = 0f;
+            if (dirToEnemy.sqrMagnitude > 0.05f && dirToEnemy.magnitude <= 3.5f)
+            {
+                transform.rotation = Quaternion.LookRotation(dirToEnemy.normalized);
+            }
+        }
+    }
+
     IEnumerator PunchRoutine(int fistIndex)
     {
-        // 1. Boksör Hamlesi (Step-in): Yumruk atarken öne doğru hafif ve doğal bir adım at
+        // 1. Boksör Hamlesi (Step-in): Yumruk atarken öne doğru hafif ve doğal bir adım at (SmoothStep ile sarsıntısız)
         if (punchStepDistance > 0f)
         {
             float stepDuration = 0.16f;
             float stepTimer = 0f;
+            Vector3 startPos = transform.position;
+            Vector3 stepTarget = startPos + transform.forward * punchStepDistance;
             while (stepTimer < stepDuration)
             {
-                transform.Translate(Vector3.forward * (punchStepDistance / stepDuration) * Time.deltaTime);
                 stepTimer += Time.deltaTime;
+                float t = Mathf.Clamp01(stepTimer / stepDuration);
+                float smoothT = Mathf.SmoothStep(0f, 1f, t);
+                transform.position = Vector3.Lerp(startPos, stepTarget, smoothT);
                 yield return null;
             }
         }
@@ -191,6 +272,11 @@ public class PlayerController : MonoBehaviour
                 if (enemy == null && enemyController != null)
                 {
                     enemy = enemyController;
+                }
+
+                if (enemy == null)
+                {
+                    enemy = FindObjectOfType<EnemyController>();
                 }
 
                 if (enemy != null)
@@ -252,6 +338,13 @@ public class PlayerController : MonoBehaviour
         {
             Die();
         }
+        else
+        {
+            if (playerAnim != null)
+            {
+                playerAnim.SetTrigger("GetHit");
+            }
+        }
     }
 
     void Die()
@@ -284,7 +377,7 @@ public class PlayerController : MonoBehaviour
 
         // Canı ve pozisyonu sıfırla
         playerHealth = maxPlayerHealth;
-        transform.position = startPosition;
+        transform.position = new Vector3(startPosition.x, -0.26f, startPosition.z);
         transform.rotation = startRotation;
 
         if (playerAnim != null)
@@ -312,6 +405,6 @@ public class PlayerController : MonoBehaviour
     IEnumerator WaitPos()
     {
         yield return new WaitForSeconds(1.2f);
-        transform.position += new Vector3(0, -0.78f, 0);
+        transform.position = new Vector3(transform.position.x, 0f, transform.position.z);
     }
 }

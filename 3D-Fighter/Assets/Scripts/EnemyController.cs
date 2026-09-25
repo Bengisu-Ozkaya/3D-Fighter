@@ -41,6 +41,7 @@ public class EnemyController : MonoBehaviour
     }
 
     private bool isDead = false;
+    public bool IsDead => isDead;
 
     void Update()
     {
@@ -137,6 +138,13 @@ public class EnemyController : MonoBehaviour
         {
             Die();
         }
+        else
+        {
+            if (enemyAnimator != null)
+            {
+                enemyAnimator.SetTrigger("GetHit");
+            }
+        }
     }
 
     // Geriye dönük uyumluluk için eski metot
@@ -196,7 +204,7 @@ public class EnemyController : MonoBehaviour
     IEnumerator WaitPos()
     {
         yield return new WaitForSeconds(1.2f);
-        transform.position += new Vector3(0, -0.78f, 0);
+        transform.position = new Vector3(transform.position.x, -0.26f, transform.position.z);
     }
 
     IEnumerator WaitPunch()
