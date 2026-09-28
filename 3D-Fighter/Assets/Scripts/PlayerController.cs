@@ -46,6 +46,9 @@ public class PlayerController : MonoBehaviour
     private bool isEnemyDead = false;
     public bool IsEnemyDead => isEnemyDead;
 
+    private bool isGameCompleted = false;
+    public bool IsGameCompleted => isGameCompleted;
+
     private Vector3 startPosition;
     private Quaternion startRotation;
 
@@ -59,7 +62,7 @@ public class PlayerController : MonoBehaviour
 
     void Start()
     {
-        startPosition = new Vector3(transform.position.x, 0f, transform.position.z);
+        startPosition = new Vector3(transform.position.x, transform.position.y, transform.position.z);
         transform.position = startPosition;
         startRotation = transform.rotation;
 
@@ -127,8 +130,8 @@ public class PlayerController : MonoBehaviour
 
     void Update()
     {
-        // Oyuncu öldüyse veya karşı taraf ölüp Show Pose yapılıyorsa hareket edip yumruk atamasın
-        if (isDead || isEnemyDead) return;
+        // Oyuncu öldüyse, karşı taraf ölüp Show Pose yapılıyorsa veya tüm dalgalar bittiyse hareket edip yumruk atamasın
+        if (isDead || isEnemyDead || isGameCompleted) return;
 
         // Karakter Hareketi
         HandleMovement();
@@ -162,10 +165,10 @@ public class PlayerController : MonoBehaviour
         float h = 0f;
         float v = 0f;
 
-        if (Input.GetKey(KeyCode.D)) h += 1f;
-        if (Input.GetKey(KeyCode.A)) h -= 1f;
-        if (Input.GetKey(KeyCode.W)) v += 1f;
-        if (Input.GetKey(KeyCode.S)) v -= 1f;
+        if (Input.GetKey(KeyCode.D)) h -= 1f;
+        if (Input.GetKey(KeyCode.A)) h += 1f;
+        if (Input.GetKey(KeyCode.W)) v -= 1f;
+        if (Input.GetKey(KeyCode.S)) v += 1f;
 
         Vector3 moveDir = new Vector3(h, 0f, v).normalized;
 
@@ -177,20 +180,27 @@ public class PlayerController : MonoBehaviour
             transform.position = newPos;
 
             // 2. Karakterin rotasyonu:
-            // S tuşuna basıldığında (v < -0.1f) arkasını kameraya dönmesin;
-            // yüzü rakibe/ileriye dönük kalsın (sırtı kameraya dönük şekilde geri gitsin)
+            // S tuşuna basılıp geri çekilirken karakter arkasını kameraya dönmesin;
+            // yüzü rakibe / kameranın baktığı yöne baksın, sırtı kameraya dönük geri adım atsın.
             Vector3 facingDir;
-            if (v < -0.1f)
+            if (Input.GetKey(KeyCode.S))
             {
-                if (enemyController != null && !enemyController.IsDead)
+                EnemyController targetEnemy = (enemyController != null && !enemyController.IsDead)
+                    ? enemyController
+                    : GetClosestLivingEnemy();
+
+                if (targetEnemy != null && !targetEnemy.IsDead)
                 {
-                    facingDir = (enemyController.transform.position - transform.position);
+                    facingDir = (targetEnemy.transform.position - transform.position);
                     facingDir.y = 0f;
-                    if (facingDir == Vector3.zero) facingDir = Vector3.forward;
+                    if (facingDir == Vector3.zero)
+                    {
+                        facingDir = GetCameraForward();
+                    }
                 }
                 else
                 {
-                    facingDir = Vector3.forward;
+                    facingDir = GetCameraForward();
                 }
             }
             else
@@ -232,6 +242,21 @@ public class PlayerController : MonoBehaviour
         }
     }
 
+    Vector3 GetCameraForward()
+    {
+        Camera cam = Camera.main;
+        if (cam != null)
+        {
+            Vector3 camFwd = cam.transform.forward;
+            camFwd.y = 0f;
+            if (camFwd.sqrMagnitude > 0.001f)
+            {
+                return camFwd.normalized;
+            }
+        }
+        return transform.forward;
+    }
+
     void ExecutePunch()
     {
         if (isPunching) return;
@@ -256,13 +281,31 @@ public class PlayerController : MonoBehaviour
         StartCoroutine(PunchRoutine(fistIndex));
     }
 
+    EnemyController GetClosestLivingEnemy()
+    {
+        EnemyController[] allEnemies = FindObjectsOfType<EnemyController>();
+        EnemyController closest = null;
+        float minDistSq = float.MaxValue;
+        Vector3 myPos = transform.position;
+
+        foreach (var enemy in allEnemies)
+        {
+            if (enemy == null || enemy.IsDead) continue;
+            float sqDist = (enemy.transform.position - myPos).sqrMagnitude;
+            if (sqDist < minDistSq)
+            {
+                minDistSq = sqDist;
+                closest = enemy;
+            }
+        }
+        return closest;
+    }
+
     void FaceOpponentOnPunch()
     {
-        EnemyController enemy = enemyController;
-        if (enemy == null)
-        {
-            enemy = FindObjectOfType<EnemyController>();
-        }
+        EnemyController enemy = (enemyController != null && !enemyController.IsDead)
+            ? enemyController
+            : GetClosestLivingEnemy();
 
         if (enemy != null && !enemy.IsDead)
         {
@@ -311,6 +354,117 @@ public class PlayerController : MonoBehaviour
     {
         enemyController = newEnemy;
         SetEnemyDead(false);
+    }
+
+    /// <summary>
+    /// Tüm dalgalar bittiğinde çağrılır; oyuncuyu Idle moduna alır ve kontrolleri kilitler
+    /// </summary>
+    public void SetGameCompleted()
+    {
+        isGameCompleted = true;
+        isEnemyDead = false;
+
+        if (playerAnim != null)
+        {
+            playerAnim.SetBool("isDeadEnemy", false);
+            playerAnim.SetBool("leftMove", false);
+            playerAnim.SetBool("rightMove", false);
+            playerAnim.CrossFadeInFixedTime("Idle", 0.2f);
+        }
+
+        isPunching = false;
+        isPunchActive = false;
+    }
+
+    /// <summary>
+    /// Tüm dalgalar bittiğinde zafer pozunu (Show Pose) başlatır ve kontrolleri kilitler
+    /// </summary>
+    public void PlayVictoryShowPose()
+    {
+        StartCoroutine(PlayVictoryShowPoseRoutine());
+    }
+
+    /// <summary>
+    /// Zafer pozunu başlatır ve animasyon baştan sona oynayıp bitene kadar bekler
+    /// </summary>
+    public IEnumerator PlayVictoryShowPoseRoutine()
+    {
+        isGameCompleted = true;
+        isEnemyDead = true;
+        isPunching = false;
+        isPunchActive = false;
+        StopCoroutine(nameof(PunchRoutine));
+
+        if (playerAnim != null)
+        {
+            playerAnim.SetBool("leftMove", false);
+            playerAnim.SetBool("rightMove", false);
+            playerAnim.SetBool("isDeadEnemy", true);
+            playerAnim.CrossFadeInFixedTime("Show Pose", 0.2f);
+        }
+
+        // Animator'ın Show Pose state'ine geçmesi için kısa bir süre tanı
+        yield return new WaitForSeconds(0.25f);
+
+        // Animasyonun son karesine kadar (normalizedTime >= 0.98f) oynatılmasını bekle
+        float timer = 0f;
+        float maxTimeout = 7.5f; // Spawn Wait klibi ~6.3 saniyedir
+
+        while (timer < maxTimeout)
+        {
+            timer += Time.deltaTime;
+
+            if (playerAnim != null)
+            {
+                AnimatorStateInfo stateInfo = playerAnim.GetCurrentAnimatorStateInfo(0);
+                if (stateInfo.IsName("Show Pose"))
+                {
+                    if (stateInfo.normalizedTime >= 0.98f)
+                    {
+                        break;
+                    }
+                }
+            }
+
+            yield return null;
+        }
+
+        // Animasyon bittikten sonra panelin açılması için küçük ve estetik bir bekleme
+        yield return new WaitForSeconds(0.4f);
+    }
+
+    /// <summary>
+    /// Oyunu yeniden başlatırken veya ana menüye dönerken oyuncunun canını, pozisyonunu ve durumlarını sıfırlar
+    /// </summary>
+    public void ResetPlayerState()
+    {
+        StopAllCoroutines();
+
+        isDead = false;
+        isEnemyDead = false;
+        isGameCompleted = false;
+        isPunching = false;
+        isPunchActive = false;
+        hasHitCurrentPunch = false;
+
+        playerHealth = maxPlayerHealth;
+        transform.position = new Vector3(startPosition.x, 0f, startPosition.z);
+        transform.rotation = startRotation;
+
+        Collider col = GetComponent<Collider>();
+        if (col != null)
+        {
+            col.enabled = true;
+        }
+
+        if (playerAnim != null)
+        {
+            playerAnim.SetBool("isDead", false);
+            playerAnim.SetBool("isDeadEnemy", false);
+            playerAnim.SetBool("leftMove", false);
+            playerAnim.SetBool("rightMove", false);
+            playerAnim.CrossFadeInFixedTime("Idle", 0.1f);
+        }
     }
 
     IEnumerator PunchRoutine(int fistIndex)
@@ -371,24 +525,7 @@ public class PlayerController : MonoBehaviour
     /// </summary>
     void CheckPhysicalFistContact(int fistIndex)
     {
-        EnemyController enemy = enemyController;
-        if (enemy == null || enemy.IsDead)
-        {
-            enemy = FindObjectOfType<EnemyController>();
-        }
-
-        if (enemy == null || enemy.IsDead) return;
-
-        // 1. Kararlı Mesafe Sınırı: Karakter ile düşman arasındaki mesafe maxPunchRange'den büyükse hasar verilemez
-        float distToEnemy = Vector3.Distance(transform.position, enemy.transform.position);
-        if (distToEnemy > maxPunchRange) return;
-
-        // 2. Yön/Açı Kontrolü: Oyuncunun yüzü düşmana dönük olmalı (arkası veya ters yön dönükken vuramaz)
-        Vector3 dirToEnemy = (enemy.transform.position - transform.position).normalized;
-        dirToEnemy.y = 0f;
-        if (Vector3.Dot(transform.forward, dirToEnemy) < 0.30f) return;
-
-        // 3. Fiziksel temas alanı kontrolü (Eldiven küresi)
+        // 1. Fiziksel temas alanı kontrolü (Eldiven küresi)
         Vector3 fistPos = GetFistPosition(fistIndex);
         int hitCount = Physics.OverlapSphereNonAlloc(fistPos, punchRadius, hitColliders, targetLayers);
 
@@ -397,15 +534,25 @@ public class PlayerController : MonoBehaviour
             Collider col = hitColliders[i];
             if (col == null || col.transform.root == transform.root) continue;
 
-            if (col.transform.root == enemy.transform ||
-                col.GetComponentInParent<EnemyController>() == enemy ||
-                col.gameObject == enemy.gameObject ||
-                col.CompareTag("Enemy"))
+            EnemyController hitEnemy = col.GetComponentInParent<EnemyController>() ?? col.GetComponent<EnemyController>();
+            if (hitEnemy != null && !hitEnemy.IsDead)
             {
-                hasHitCurrentPunch = true;
-                isPunchActive = false;
-                enemy.TakeDamage(punchDamage);
-                return;
+                // Kararlı Mesafe Sınırı
+                float distToEnemy = Vector3.Distance(transform.position, hitEnemy.transform.position);
+                if (distToEnemy <= maxPunchRange)
+                {
+                    // Yön/Açı Kontrolü: Oyuncunun baktığı yönde olmalı
+                    Vector3 dirToEnemy = (hitEnemy.transform.position - transform.position).normalized;
+                    dirToEnemy.y = 0f;
+                    if (Vector3.Dot(transform.forward, dirToEnemy) >= 0.25f)
+                    {
+                        hasHitCurrentPunch = true;
+                        isPunchActive = false;
+                        hitEnemy.TakeDamage(punchDamage);
+                        enemyController = hitEnemy; // Odaklanılan düşmanı son vurulan düşman yap
+                        return;
+                    }
+                }
             }
         }
     }
@@ -487,14 +634,14 @@ public class PlayerController : MonoBehaviour
             playerAnim.SetBool("isDead", true);
         }
 
-        // Düşmana oyuncunun öldüğünü bildir (Düşman Show Pose'a geçsin)
-        if (enemyController == null)
+        // Tüm düşmanlara oyuncunun öldüğünü bildir (Düşmanlar Show Pose'a geçsin)
+        EnemyController[] allEnemiesOnDie = FindObjectsOfType<EnemyController>();
+        foreach (var enemy in allEnemiesOnDie)
         {
-            enemyController = FindObjectOfType<EnemyController>();
-        }
-        if (enemyController != null && !enemyController.IsDead)
-        {
-            enemyController.SetPlayerDead(true);
+            if (enemy != null && !enemy.IsDead)
+            {
+                enemy.SetPlayerDead(true);
+            }
         }
 
         StartCoroutine(WaitPos());
@@ -531,14 +678,14 @@ public class PlayerController : MonoBehaviour
 
         isDead = false;
 
-        // Düşmana oyuncunun yeniden doğduğunu bildir (Düşman Show Pose'dan çıkıp Idle'a dönsün)
-        if (enemyController == null)
+        // Tüm düşmanlara oyuncunun yeniden doğduğunu bildir (Düşmanlar Show Pose'dan çıkıp Idle'a dönsün)
+        EnemyController[] allEnemiesOnRespawn = FindObjectsOfType<EnemyController>();
+        foreach (var enemy in allEnemiesOnRespawn)
         {
-            enemyController = FindObjectOfType<EnemyController>();
-        }
-        if (enemyController != null && !enemyController.IsDead)
-        {
-            enemyController.SetPlayerDead(false);
+            if (enemy != null && !enemy.IsDead)
+            {
+                enemy.SetPlayerDead(false);
+            }
         }
 
         Debug.Log("<color=green>[OYUNCU YENİDEN DOĞDU!]</color>");

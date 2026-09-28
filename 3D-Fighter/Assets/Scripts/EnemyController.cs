@@ -232,12 +232,24 @@ public class EnemyController : MonoBehaviour
 
         Debug.Log($"<color=red>[DÜŞMAN YENİLDİ]</color> {gameObject.name} nakavt oldu!");
 
-        // Oyuncuya düşmanın öldüğünü bildir (Oyuncu Show Pose'a girsin)
+        // Sadece sahnedeki TÜM düşmanlar öldüyse oyuncu Show Pose'a girsin
         if (playerController == null)
         {
             playerController = FindObjectOfType<PlayerController>();
         }
-        if (playerController != null && !playerController.IsDead)
+
+        EnemyController[] allEnemies = FindObjectsOfType<EnemyController>();
+        bool anyLivingEnemy = false;
+        foreach (var e in allEnemies)
+        {
+            if (e != null && e != this && !e.IsDead)
+            {
+                anyLivingEnemy = true;
+                break;
+            }
+        }
+
+        if (!anyLivingEnemy && playerController != null && !playerController.IsDead)
         {
             playerController.SetEnemyDead(true);
         }

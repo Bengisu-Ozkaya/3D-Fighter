@@ -27,8 +27,11 @@ public class FollowPlayer : MonoBehaviour
     [Tooltip("Kameranın bakış açısını sabit tutarak animasyonlardaki rotasyon titremelerini tamamen engeller.")]
     [SerializeField] private bool useFixedAngle = true;
 
-    [Tooltip("useFixedAngle aktifken kameranın aşağıya bakış açısı (derece)")]
-    [SerializeField] private float fixedPitchAngle = 14f;
+    [Tooltip("useFixedAngle aktifken kameranın aşağıya bakış açısı (derece / X rotasyonu)")]
+    [SerializeField] private float fixedPitchAngle = 20f;
+
+    [Tooltip("useFixedAngle aktifken kameranın yatay bakış açısı (derece / Y rotasyonu)")]
+    [SerializeField] private float fixedYawAngle = 180f;
 
     [Header("Dönüş Takibi (useFixedAngle kapalıysa)")]
     [Tooltip("Oyuncu döndüğünde kameranın oyuncunun arkasını takip etme süresi")]
@@ -81,7 +84,7 @@ public class FollowPlayer : MonoBehaviour
 
             if (useFixedAngle)
             {
-                transform.rotation = Quaternion.Euler(fixedPitchAngle, 0f, 0f);
+                transform.rotation = Quaternion.Euler(fixedPitchAngle, fixedYawAngle, 0f);
             }
         }
     }
@@ -144,7 +147,7 @@ public class FollowPlayer : MonoBehaviour
         if (useFixedAngle)
         {
             // Sabit pitch ve yaw: Ringdeki dövüşü en net ve titreşimsiz gösteren profesyonel mod
-            targetRot = Quaternion.Euler(fixedPitchAngle, 0f, 0f);
+            targetRot = Quaternion.Euler(fixedPitchAngle, fixedYawAngle, 0f);
         }
         else
         {
