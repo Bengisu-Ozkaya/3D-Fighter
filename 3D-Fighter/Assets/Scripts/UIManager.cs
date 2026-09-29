@@ -9,6 +9,7 @@ public class UIManager : MonoBehaviour
     [SerializeField] GameObject startPanel;
     [SerializeField] GameObject victoryPanel;
     [SerializeField] GameObject gameOverPanel;
+    [SerializeField] GameObject mobileControlPanel;
 
     [Header("Referanslar")]
     [SerializeField] EnemySpawner enemySpawner;
@@ -31,6 +32,19 @@ public class UIManager : MonoBehaviour
             FindGameOverPanel();
         }
 
+        if (mobileControlPanel == null)
+        {
+            Canvas canvas = FindObjectOfType<Canvas>();
+            if (canvas != null)
+            {
+                Transform mobileT = canvas.transform.Find("Mobil Control");
+                if (mobileT != null)
+                {
+                    mobileControlPanel = mobileT.gameObject;
+                }
+            }
+        }
+
         BindGameOverButtons();
     }
 
@@ -39,6 +53,10 @@ public class UIManager : MonoBehaviour
         if (startPanel != null) startPanel.SetActive(true);
         if (victoryPanel != null) victoryPanel.SetActive(false);
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
+        if (mobileControlPanel != null)
+        {
+            mobileControlPanel.SetActive(startPanel == null || !startPanel.activeSelf);
+        }
     }
 
     void FindGameOverPanel()
@@ -86,6 +104,7 @@ public class UIManager : MonoBehaviour
         if (startPanel != null) startPanel.SetActive(false);
         if (victoryPanel != null) victoryPanel.SetActive(false);
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
+        if (mobileControlPanel != null) mobileControlPanel.SetActive(true);
         if (enemySpawner != null)
         {
             enemySpawner.StartEasyMode();
@@ -97,6 +116,7 @@ public class UIManager : MonoBehaviour
         if (startPanel != null) startPanel.SetActive(false);
         if (victoryPanel != null) victoryPanel.SetActive(false);
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
+        if (mobileControlPanel != null) mobileControlPanel.SetActive(true);
         if (enemySpawner != null)
         {
             enemySpawner.StartMidMode();
@@ -108,6 +128,7 @@ public class UIManager : MonoBehaviour
         if (startPanel != null) startPanel.SetActive(false);
         if (victoryPanel != null) victoryPanel.SetActive(false);
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
+        if (mobileControlPanel != null) mobileControlPanel.SetActive(true);
         if (enemySpawner != null)
         {
             enemySpawner.StartHardMode();
@@ -120,6 +141,7 @@ public class UIManager : MonoBehaviour
     public void ShowVictoryPanel()
     {
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
+        if (mobileControlPanel != null) mobileControlPanel.SetActive(false);
         if (victoryPanel != null)
         {
             victoryPanel.SetActive(true);
@@ -135,6 +157,7 @@ public class UIManager : MonoBehaviour
         {
             gameOverPanel.SetActive(true);
         }
+        if (mobileControlPanel != null) mobileControlPanel.SetActive(false);
     }
 
     /// <summary>
@@ -154,6 +177,7 @@ public class UIManager : MonoBehaviour
     public void Relive()
     {
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
+        if (mobileControlPanel != null) mobileControlPanel.SetActive(true);
 
         // 1. Spawner'da oyuncunun öldüğü mevcut dalgayı yeniden başlat
         if (enemySpawner == null) enemySpawner = FindObjectOfType<EnemySpawner>();
@@ -183,6 +207,7 @@ public class UIManager : MonoBehaviour
         if (victoryPanel != null) victoryPanel.SetActive(false);
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
         if (startPanel != null) startPanel.SetActive(false);
+        if (mobileControlPanel != null) mobileControlPanel.SetActive(true);
 
         // Oyuncuyu sıfırla
         if (playerController == null) playerController = FindObjectOfType<PlayerController>();
@@ -207,6 +232,7 @@ public class UIManager : MonoBehaviour
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
         if (victoryPanel != null) victoryPanel.SetActive(false);
         if (startPanel != null) startPanel.SetActive(true);
+        if (mobileControlPanel != null) mobileControlPanel.SetActive(false);
 
         // Oyuncuyu başlangıç durumuna döndür
         if (playerController == null) playerController = FindObjectOfType<PlayerController>();

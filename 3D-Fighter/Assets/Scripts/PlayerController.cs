@@ -84,6 +84,8 @@ public class PlayerController : MonoBehaviour
 
     [SerializeField] private GameObject startPanel;
     [SerializeField] private UIManager uiManager;
+    [Header("Mobil Kontroller")]
+    [SerializeField] private VirtualJoystick joystick;
 
     private int playerDoBlock;
 
@@ -99,6 +101,11 @@ public class PlayerController : MonoBehaviour
         if (uiManager == null)
         {
             uiManager = FindObjectOfType<UIManager>();
+        }
+
+        if (joystick == null)
+        {
+            joystick = VirtualJoystick.Instance ?? FindObjectOfType<VirtualJoystick>(true);
         }
 
         // 1. Animator'ı bağla
@@ -300,9 +307,30 @@ public class PlayerController : MonoBehaviour
         if (Input.GetKey(KeyCode.W)) v -= 1f;
         if (Input.GetKey(KeyCode.S)) v += 1f;
 
-        Vector3 moveDir = new Vector3(h, 0f, v).normalized;
+        // Mobil Joystick Girişi
+        if (joystick == null)
+        {
+            joystick = VirtualJoystick.Instance ?? FindObjectOfType<VirtualJoystick>(true);
+        }
 
-        if (moveDir != Vector3.zero)
+        if (joystick != null)
+        {
+            Vector2 joy = joystick.InputDirection;
+            if (joy.sqrMagnitude > 0.001f)
+            {
+                // joy.x: Sağa (+1) çekildiğinde D tuşu gibi h azalır (-=)
+                // joy.x: Sola (-1) çekildiğinde A tuşu gibi h artar (+=)
+                h -= joy.x;
+                // joy.y: Yukarı (+1) çekildiğinde W tuşu gibi v azalır (-=)
+                // joy.y: Aşağı (-1) çekildiğinde S tuşu gibi v artar (+=)
+                v -= joy.y;
+            }
+        }
+
+        Vector3 rawMove = new Vector3(h, 0f, v);
+        Vector3 moveDir = rawMove.sqrMagnitude > 1f ? rawMove.normalized : rawMove;
+
+        if (moveDir.sqrMagnitude > 0.001f)
         {
             // 1. Pozisyonu hareket yönünde ilerlet (Dünya koordinatlarında)
             Vector3 targetPos = transform.position + moveDir * speed * Time.deltaTime;
@@ -690,6 +718,11 @@ public class PlayerController : MonoBehaviour
         isBlocking = false;
         playerDoBlock = 0;
         hasHitCurrentPunch = false;
+
+        if (joystick != null)
+        {
+            joystick.ResetJoystick();
+        }
 
         playerHealth = maxPlayerHealth;
         punchDamage = 10f;
