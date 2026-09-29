@@ -12,12 +12,14 @@ public class EnemySpawner : MonoBehaviour
 {
     [Header("Dalga ve Düşman Ayarları")]
     [SerializeField] GameObject enemyPrefab;
-    [Tooltip("Önceki dalgadaki tüm düşmanlar yenildikten sonra yeni dalganın başlama gecikmesi (saniye)")]
-    [SerializeField] float respawnDelay = 2.5f;
+    [Tooltip("Önceki dalgadaki tüm düşmanlar yok olduktan (Destroy edildikten) sonra yeni dalganın başlama gecikmesi (saniye)")]
+    [SerializeField] float respawnDelay = 1.0f;
     [Tooltip("Maksimum dalga sayısı. Bu dalgadaki düşmanlar bittiğinde oyun durur (Örn: 3. dalgadan sonra)")]
     [SerializeField] int maxWaves = 3;
     [Tooltip("Birden fazla düşman doğduğunda aralarındaki yatay mesafe")]
     [SerializeField] float spawnSpacing = 1.4f;
+    [Tooltip("Düşmanların doğarken sahip olacağı rotasyon açısı (Y ekseni derece, Varsayılan 0)")]
+    [SerializeField] float spawnRotationY = 0f;
 
     [Header("Zorluk Hasar Ayarları (Enemy Attack Damage)")]
     [Tooltip("Kolay modda düşmanların oyuncuya vereceği hasar")]
@@ -231,13 +233,21 @@ public class EnemySpawner : MonoBehaviour
         // Oyun başlamadıysa veya dalgalar tamamlandıysa bekle
         if (!isGameStarted || isWavesCompleted) return;
 
-        // Ölen veya Destroy edilen düşmanları listeden temizle
-        activeEnemies.RemoveAll(e => e == null || e.IsDead);
+        // Sahneden tamamen yok olan (Destroy edilen) düşmanları listeden temizle
+        activeEnemies.RemoveAll(e => e == null);
 
-        // Sahnede hiç canlı düşman kalmadıysa ve yeni dalga henüz başlatılmadıysa
-        if (activeEnemies.Count == 0 && !isSpawning)
+        // Sahnedeki tüm düşmanları kontrol et (Önceki dalgadan yerde yatan veya henüz yok olmamış herhangi bir düşman var mı?)
+        bool anyEnemyInScene = false;
+        EnemyController[] allEnemiesInScene = FindObjectsOfType<EnemyController>();
+        if (allEnemiesInScene != null && allEnemiesInScene.Length > 0)
         {
-            // Belirlenen maksimum dalgaya ulaşıldı ve o dalgadaki tüm düşmanlar yenildiyse
+            anyEnemyInScene = true;
+        }
+
+        // Sahnede önceki dalgadan HİÇBİR düşman kalmadıysa (hepsi nakavt olup destroy edildiyse) ve yeni dalga henüz başlatılmadıysa
+        if (activeEnemies.Count == 0 && !anyEnemyInScene && !isSpawning)
+        {
+            // Belirlenen maksimum dalgaya ulaşıldı ve o dalgadaki tüm düşmanlar yenilip yok olduysa
             if (wave >= maxWaves)
             {
                 StartCoroutine(WavesCompletedRoutine());
@@ -403,10 +413,12 @@ public class EnemySpawner : MonoBehaviour
                 float xOffset = (count > 1) ? (i - (count - 1) * 0.5f) * spawnSpacing : 0f;
                 Vector3 spawnPos = transform.position + new Vector3(xOffset, 0f, 0f);
 
-                GameObject newEnemy = Instantiate(enemyPrefab, spawnPos, transform.rotation);
+                Quaternion spawnRot = Quaternion.Euler(0f, spawnRotationY, 0f);
+                GameObject newEnemy = Instantiate(enemyPrefab, spawnPos, spawnRot);
                 EnemyController ec = newEnemy.GetComponent<EnemyController>();
                 if (ec != null)
                 {
+                    ec.transform.rotation = spawnRot;
                     ec.SetAttackDamage(GetCurrentDifficultyDamage());
                     ec.SetHealth(GetCurrentDifficultyEnemyHealth());
                     activeEnemies.Add(ec);

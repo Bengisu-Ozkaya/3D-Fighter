@@ -165,37 +165,15 @@ public class PlayerController : MonoBehaviour
 
     void Update()
     {
-        // Oyuncu öldüyse, karşı taraf ölüp Show Pose yapılıyorsa veya tüm dalgalar bittiyse hareket edip yumruk atamasın
-        if (isDead || isEnemyDead || isGameCompleted) return;
+        // Oyuncu öldüyse veya tüm dalgalar bittiyse (oyun tamamlandıysa) hareket edip yumruk atamasın
+        if (isDead || isGameCompleted) return;
 
-        // 1. Blok Kontrolü ("F" Tuşu)
-        if (Input.GetKeyDown(KeyCode.F))
-        {
-            if (!isPunching)
-            {
-                isBlocking = true;
-                if (playerAnim != null)
-                {
-                    playerAnim.CrossFadeInFixedTime("Center Block", 0.1f);
-                }
-            }
-        }
-        if (Input.GetKeyUp(KeyCode.F))
-        {
-            if (isBlocking)
-            {
-                isBlocking = false;
-                if (playerAnim != null)
-                {
-                    playerAnim.CrossFadeInFixedTime("Idle", 0.15f);
-                }
-            }
-        }
+        // 1. Blok Kontrolü (Klavye "F" Tuşu veya Mobil Blok Butonu)
+        bool wantBlock = Input.GetKey(KeyCode.F) || (playerDoBlock == 1);
 
-        //Mobil Block
-        if(playerDoBlock == 1)
+        if (wantBlock)
         {
-            if (!isPunching)
+            if (!isBlocking && !isPunching)
             {
                 isBlocking = true;
                 if (playerAnim != null)
@@ -206,7 +184,7 @@ public class PlayerController : MonoBehaviour
         }
         else
         {
-             if (isBlocking)
+            if (isBlocking)
             {
                 isBlocking = false;
                 if (playerAnim != null)
@@ -598,23 +576,14 @@ public class PlayerController : MonoBehaviour
         isEnemyDead = dead;
         if (playerAnim != null)
         {
-            playerAnim.SetBool("isDeadEnemy", dead);
+            // Normal dalgalar arasında Show Pose'a geçmiyoruz, oyuncu Idle'da kalır ve serbestçe hareket edebilir
+            playerAnim.SetBool("isDeadEnemy", false);
+
             if (dead)
             {
-                // Yürüyüş animasyonlarını sıfırla ki Show Pose'a temiz geçsin
-                playerAnim.SetBool("leftMove", false);
-                playerAnim.SetBool("rightMove", false);
-
-                // Devam eden yumruk coroutine'ini sıfırla
                 isPunching = false;
                 isPunchActive = false;
-            }
-            else
-            {
-                // Düşman yeniden doğdu: Show Pose animasyonunu derhal kes ve Idle'a yumuşakça geçiş yap!
-                playerAnim.CrossFadeInFixedTime("Idle", 0.2f);
-                isPunching = false;
-                isPunchActive = false;
+                playerAnim.CrossFadeInFixedTime("Idle", 0.15f);
             }
         }
     }
@@ -719,6 +688,7 @@ public class PlayerController : MonoBehaviour
         isPunching = false;
         isPunchActive = false;
         isBlocking = false;
+        playerDoBlock = 0;
         hasHitCurrentPunch = false;
 
         playerHealth = maxPlayerHealth;
@@ -932,6 +902,7 @@ public class PlayerController : MonoBehaviour
         isPunching = false;
         isPunchActive = false;
         isBlocking = false;
+        playerDoBlock = 0;
         StopCoroutine(nameof(PunchRoutine));
         StopCoroutine(nameof(UppercutRoutine));
 
