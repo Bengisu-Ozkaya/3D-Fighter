@@ -27,10 +27,10 @@ public class PlayerController : MonoBehaviour
 
     [Tooltip("Bir yumruğun baştan sona tamamlanma ve gard pozisyonuna dönüş süresi (saniye). Bu süre dolmadan yeni yumruk atılamaz.")]
     [SerializeField] float punchDuration = 0.55f;
-    [Tooltip("Normal yumruk vuruşunun vereceği hasar miktarı")]
-    [SerializeField] float punchDamage = 20f;
-    [Tooltip("E tuşuna basıldığında atılan aparkatın hasar miktarı")]
-    [SerializeField] float uppercutDamage = 30f;
+    [Tooltip("Normal yumruk vuruşunun vereceği hasar miktarı (Kolay ve Orta: 10, Zor: 20)")]
+    [SerializeField] float punchDamage = 10f;
+    [Tooltip("E tuşuna basıldığında atılan aparkatın hasar miktarı (Kolay ve Orta: 20, Zor: 30)")]
+    [SerializeField] float uppercutDamage = 20f;
     [SerializeField] LayerMask targetLayers = ~0;
 
     [Header("El Kemiği Referansları (Boşsa Otomatik Bulunur)")]
@@ -90,6 +90,9 @@ public class PlayerController : MonoBehaviour
         startPosition = new Vector3(transform.position.x, standingYPosition, transform.position.z);
         transform.position = startPosition;
         startRotation = transform.rotation;
+
+        punchDamage = 10f;
+        uppercutDamage = 20f;
 
         if (uiManager == null)
         {
@@ -701,6 +704,8 @@ public class PlayerController : MonoBehaviour
         hasHitCurrentPunch = false;
 
         playerHealth = maxPlayerHealth;
+        punchDamage = 10f;
+        uppercutDamage = 20f;
         transform.position = new Vector3(startPosition.x, standingYPosition, startPosition.z);
         transform.rotation = startRotation;
 

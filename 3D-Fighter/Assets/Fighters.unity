@@ -2514,11 +2514,11 @@ MonoBehaviour:
   easyEnemyHealth: 30
   midEnemyHealth: 40
   hardEnemyHealth: 50
-  easyPlayerDamage: 20
-  midPlayerDamage: 20
+  easyPlayerDamage: 10
+  midPlayerDamage: 10
   hardPlayerDamage: 20
-  easyPlayerUppercutDamage: 30
-  midPlayerUppercutDamage: 30
+  easyPlayerUppercutDamage: 20
+  midPlayerUppercutDamage: 20
   hardPlayerUppercutDamage: 30
 --- !u!4 &372237217
 Transform:

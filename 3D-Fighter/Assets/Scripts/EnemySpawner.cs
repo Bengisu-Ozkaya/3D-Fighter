@@ -36,18 +36,18 @@ public class EnemySpawner : MonoBehaviour
     [SerializeField] float hardEnemyHealth = 50f;
 
     [Header("Zorluk Oyuncu Yumruk Hasarı (Player Punch Damage)")]
-    [Tooltip("Kolay modda oyuncunun yumruk hasarı")]
-    [SerializeField] float easyPlayerDamage = 20f;
-    [Tooltip("Orta modda oyuncunun yumruk hasarı")]
-    [SerializeField] float midPlayerDamage = 20f;
+    [Tooltip("Kolay modda oyuncunun yumruk hasarı (İstenen: 10)")]
+    [SerializeField] float easyPlayerDamage = 10f;
+    [Tooltip("Orta modda oyuncunun yumruk hasarı (İstenen: 10)")]
+    [SerializeField] float midPlayerDamage = 10f;
     [Tooltip("Zor modda oyuncunun yumruk hasarı (İstenen: 20)")]
     [SerializeField] float hardPlayerDamage = 20f;
 
     [Header("Zorluk Oyuncu Aparkat Hasarı (Player Uppercut Damage - 'E' Tuşu)")]
-    [Tooltip("Kolay modda oyuncunun aparkat hasarı")]
-    [SerializeField] float easyPlayerUppercutDamage = 30f;
-    [Tooltip("Orta modda oyuncunun aparkat hasarı")]
-    [SerializeField] float midPlayerUppercutDamage = 30f;
+    [Tooltip("Kolay modda oyuncunun aparkat hasarı (İstenen: 20)")]
+    [SerializeField] float easyPlayerUppercutDamage = 20f;
+    [Tooltip("Orta modda oyuncunun aparkat hasarı (İstenen: 20)")]
+    [SerializeField] float midPlayerUppercutDamage = 20f;
     [Tooltip("Zor modda oyuncunun aparkat hasarı (İstenen: 30)")]
     [SerializeField] float hardPlayerUppercutDamage = 30f;
 
@@ -96,11 +96,11 @@ public class EnemySpawner : MonoBehaviour
         switch (currentDifficulty)
         {
             case Difficulty.Easy:
-                return easyEnemyHealth;
+                return 30f; // Kolay mod: Düşman Canı 30
             case Difficulty.Medium:
-                return midEnemyHealth;
+                return 40f; // Orta mod: Düşman Canı 40
             case Difficulty.Hard:
-                return hardEnemyHealth;
+                return 50f; // Zor mod: Düşman Canı 50
             default:
                 return 30f;
         }
@@ -114,13 +114,13 @@ public class EnemySpawner : MonoBehaviour
         switch (currentDifficulty)
         {
             case Difficulty.Easy:
-                return easyPlayerDamage;
+                return 10f; // Kolay mod: Normal yumruk 10 hasar (30'dan 20'ye iner)
             case Difficulty.Medium:
-                return midPlayerDamage;
+                return 10f; // Orta mod: Normal yumruk 10 hasar (40'tan 30'a iner)
             case Difficulty.Hard:
-                return hardPlayerDamage;
+                return 20f; // Zor mod: Normal yumruk 20 hasar (50'den 20 götürür)
             default:
-                return 20f;
+                return 10f;
         }
     }
 
@@ -132,13 +132,13 @@ public class EnemySpawner : MonoBehaviour
         switch (currentDifficulty)
         {
             case Difficulty.Easy:
-                return easyPlayerUppercutDamage;
+                return 20f; // Kolay mod: Aparkat 20 hasar (30'dan 10'a iner)
             case Difficulty.Medium:
-                return midPlayerUppercutDamage;
+                return 20f; // Orta mod: Aparkat 20 hasar (40'tan 20'ye iner)
             case Difficulty.Hard:
-                return hardPlayerUppercutDamage;
+                return 30f; // Zor mod: Aparkat 30 hasar (50'den 30 götürür)
             default:
-                return 30f;
+                return 20f;
         }
     }
 
@@ -337,8 +337,8 @@ public class EnemySpawner : MonoBehaviour
         PlayerController player = FindObjectOfType<PlayerController>();
         if (player != null)
         {
-            player.SetPunchDamage(20f);
-            player.SetUppercutDamage(30f);
+            player.SetPunchDamage(10f);
+            player.SetUppercutDamage(20f);
         }
     }
 
