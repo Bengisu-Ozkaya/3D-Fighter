@@ -102,11 +102,11 @@ public class FollowPlayer : MonoBehaviour
             CachePlayerComponents();
         }
 
-        bool isPlayerDead = (playerController != null && playerController.IsDead);
+        bool isKnockoutView = (playerController != null && playerController.IsDead && !playerController.IsStandingUp);
 
-        if (isPlayerDead)
+        if (isKnockoutView)
         {
-            // --- OYUNCU ÖLDÜĞÜNDE (ÜSTTEN NAKAVT BAKIŞI) ---
+            // --- OYUNCU YERDE NAKAVT HALİNDEYKEN (ÜSTTEN NAKAVT BAKIŞI) ---
             // Odak noktası: Otomatik gövde merkezleme açıksa yere yatan kalça/gövde kemiği (Hips), yoksa ana obje pozisyonu
             Vector3 centerPos = (autoCenterOnFallenBody && playerHipsBone != null)
                                 ? playerHipsBone.position
@@ -127,7 +127,7 @@ public class FollowPlayer : MonoBehaviour
             return;
         }
 
-        // --- NORMAL OYUN / DÖVÜŞ KAMERA TAKİBİ ---
+        // --- NORMAL OYUN / DÖVÜŞ KAMERA TAKİBİ (VE AYAĞA KALKARKEN NORMALE DÖNÜŞ) ---
         Vector3 targetBasePos = target.position;
 
         // Dikey sarsıntı önleme: Karakterin animasyondaki yukarı/aşağı sekmesini filtrele
@@ -138,9 +138,10 @@ public class FollowPlayer : MonoBehaviour
             targetBasePos.y = fixedGroundY;
         }
 
-        // 1. Pozisyon Takibi (SmoothDamp ile kritik sönümleme - sıfır titreme)
+        // 1. Pozisyon Takibi: Karakter ayağa kalkarken pürüzsüz ve sinematik şekilde normal konuma süzül
+        float posSmooth = (playerController != null && playerController.IsStandingUp) ? 0.75f : smoothTime;
         Vector3 desiredPos = CalculateDesiredPosition(targetBasePos);
-        transform.position = Vector3.SmoothDamp(transform.position, desiredPos, ref currentVelocity, smoothTime);
+        transform.position = Vector3.SmoothDamp(transform.position, desiredPos, ref currentVelocity, posSmooth);
 
         // 2. Rotasyon Takibi (Titreşimi engelleyen kararlı yönelim / Nakavttan dönerken yumuşak slerp)
         Quaternion targetRot;
@@ -158,9 +159,10 @@ public class FollowPlayer : MonoBehaviour
         }
 
         // Nakavt modundan (90 dereceden) normale dönerken yumuşakça slerp yap
+        float rotSpeed = (playerController != null && playerController.IsStandingUp) ? 2.0f : 3.5f;
         if (Quaternion.Angle(transform.rotation, targetRot) > 0.05f)
         {
-            transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * 3.5f);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * rotSpeed);
         }
         else
         {

@@ -19,10 +19,42 @@ public class EnemySpawner : MonoBehaviour
     [Tooltip("Birden fazla düşman doğduğunda aralarındaki yatay mesafe")]
     [SerializeField] float spawnSpacing = 1.4f;
 
+    [Header("Zorluk Hasar Ayarları (Enemy Attack Damage)")]
+    [Tooltip("Kolay modda düşmanların oyuncuya vereceği hasar")]
+    [SerializeField] float easyDamage = 5f;
+    [Tooltip("Orta modda düşmanların oyuncuya vereceği hasar")]
+    [SerializeField] float midDamage = 10f;
+    [Tooltip("Zor modda düşmanların oyuncuya vereceği hasar")]
+    [SerializeField] float hardDamage = 15f;
+
+    [Header("Zorluk Düşman Can Ayarları (Enemy Health)")]
+    [Tooltip("Kolay modda düşmanların canı")]
+    [SerializeField] float easyEnemyHealth = 30f;
+    [Tooltip("Orta modda düşmanların canı (İstenen: 40)")]
+    [SerializeField] float midEnemyHealth = 40f;
+    [Tooltip("Zor modda düşmanların canı (İstenen: 50)")]
+    [SerializeField] float hardEnemyHealth = 50f;
+
+    [Header("Zorluk Oyuncu Yumruk Hasarı (Player Punch Damage)")]
+    [Tooltip("Kolay modda oyuncunun yumruk hasarı")]
+    [SerializeField] float easyPlayerDamage = 20f;
+    [Tooltip("Orta modda oyuncunun yumruk hasarı")]
+    [SerializeField] float midPlayerDamage = 20f;
+    [Tooltip("Zor modda oyuncunun yumruk hasarı (İstenen: 20)")]
+    [SerializeField] float hardPlayerDamage = 20f;
+
+    [Header("Zorluk Oyuncu Aparkat Hasarı (Player Uppercut Damage - 'E' Tuşu)")]
+    [Tooltip("Kolay modda oyuncunun aparkat hasarı")]
+    [SerializeField] float easyPlayerUppercutDamage = 30f;
+    [Tooltip("Orta modda oyuncunun aparkat hasarı")]
+    [SerializeField] float midPlayerUppercutDamage = 30f;
+    [Tooltip("Zor modda oyuncunun aparkat hasarı (İstenen: 30)")]
+    [SerializeField] float hardPlayerUppercutDamage = 30f;
+
     // Zorluk Modlarına Göre Dalga Düşman Sayıları
     private readonly int[] easyWaveCounts = new int[] { 1, 2, 3 };
-    private readonly int[] midWaveCounts = new int[] { 3, 5, 7 };
-    private readonly int[] hardWaveCounts = new int[] { 5, 7, 10 };
+    private readonly int[] midWaveCounts = new int[] { 1, 3, 5 };
+    private readonly int[] hardWaveCounts = new int[] { 1, 3, 5 };
 
     private int[] currentWaveCounts = new int[] { 1, 2, 3 };
     private Difficulty currentDifficulty = Difficulty.Easy;
@@ -37,6 +69,78 @@ public class EnemySpawner : MonoBehaviour
     public bool IsWavesCompleted => isWavesCompleted;
     public bool IsGameStarted => isGameStarted;
     public Difficulty CurrentDifficulty => currentDifficulty;
+
+    /// <summary>
+    /// Aktif zorluk derecesine göre düşmanın vereceği hasar miktarını döner
+    /// </summary>
+    public float GetCurrentDifficultyDamage()
+    {
+        switch (currentDifficulty)
+        {
+            case Difficulty.Easy:
+                return easyDamage;
+            case Difficulty.Medium:
+                return midDamage;
+            case Difficulty.Hard:
+                return hardDamage;
+            default:
+                return 10f;
+        }
+    }
+
+    /// <summary>
+    /// Aktif zorluk derecesine göre düşmanın can miktarını döner
+    /// </summary>
+    public float GetCurrentDifficultyEnemyHealth()
+    {
+        switch (currentDifficulty)
+        {
+            case Difficulty.Easy:
+                return easyEnemyHealth;
+            case Difficulty.Medium:
+                return midEnemyHealth;
+            case Difficulty.Hard:
+                return hardEnemyHealth;
+            default:
+                return 30f;
+        }
+    }
+
+    /// <summary>
+    /// Aktif zorluk derecesine göre oyuncunun vereceği yumruk hasarını döner
+    /// </summary>
+    public float GetCurrentDifficultyPlayerDamage()
+    {
+        switch (currentDifficulty)
+        {
+            case Difficulty.Easy:
+                return easyPlayerDamage;
+            case Difficulty.Medium:
+                return midPlayerDamage;
+            case Difficulty.Hard:
+                return hardPlayerDamage;
+            default:
+                return 20f;
+        }
+    }
+
+    /// <summary>
+    /// Aktif zorluk derecesine göre oyuncunun vereceği aparkat hasarını döner
+    /// </summary>
+    public float GetCurrentDifficultyPlayerUppercutDamage()
+    {
+        switch (currentDifficulty)
+        {
+            case Difficulty.Easy:
+                return easyPlayerUppercutDamage;
+            case Difficulty.Medium:
+                return midPlayerUppercutDamage;
+            case Difficulty.Hard:
+                return hardPlayerUppercutDamage;
+            default:
+                return 30f;
+        }
+    }
 
     void Start()
     {
@@ -94,7 +198,29 @@ public class EnemySpawner : MonoBehaviour
         isWavesCompleted = false;
         isGameStarted = true;
 
-        Debug.Log($"<color=cyan>[OYUN BAŞLADI]</color> Mod: {difficulty} | Toplam Dalga: {maxWaves}");
+        float dmg = GetCurrentDifficultyDamage();
+        float hp = GetCurrentDifficultyEnemyHealth();
+        float playerDmg = GetCurrentDifficultyPlayerDamage();
+        float playerUppercutDmg = GetCurrentDifficultyPlayerUppercutDamage();
+        Debug.Log($"<color=cyan>[OYUN BAŞLADI]</color> Mod: {difficulty} | Toplam Dalga: {maxWaves} | Düşman Canı: {hp} | Düşman Hasarı: {dmg} | Oyuncu Yumruk Hasarı: {playerDmg} | Aparkat Hasarı: {playerUppercutDmg}");
+
+        // Sahnedeki mevcut düşmanların hasarını ve canını güncelle
+        foreach (var ec in FindObjectsOfType<EnemyController>())
+        {
+            if (ec != null)
+            {
+                ec.SetAttackDamage(dmg);
+                ec.SetHealth(hp);
+            }
+        }
+
+        // Oyuncunun yumruk ve aparkat hasarını zorluk moduna göre güncelle
+        PlayerController player = FindObjectOfType<PlayerController>();
+        if (player != null)
+        {
+            player.SetPunchDamage(playerDmg);
+            player.SetUppercutDamage(playerUppercutDmg);
+        }
 
         // İlk dalgayı başlat
         StartCoroutine(SpawnEnemyRoutine(wave, true));
@@ -149,6 +275,29 @@ public class EnemySpawner : MonoBehaviour
     }
 
     /// <summary>
+    /// Oyuncunun öldüğü mevcut dalgayı yeniden başlatır (Relive butonu için)
+    /// </summary>
+    public void RestartCurrentWave()
+    {
+        StopAllCoroutines();
+        ClearAllEnemies();
+
+        isGameStarted = true;
+        isWavesCompleted = false;
+        isSpawning = false;
+
+        PlayerController player = FindObjectOfType<PlayerController>();
+        if (player != null)
+        {
+            player.SetPunchDamage(GetCurrentDifficultyPlayerDamage());
+            player.SetUppercutDamage(GetCurrentDifficultyPlayerUppercutDamage());
+        }
+
+        Debug.Log($"<color=cyan>[ÖLÜNEN DALGA YENİDEN BAŞLATILIYOR]</color> Dalga {wave}/{maxWaves} - Mod: {currentDifficulty}");
+        StartCoroutine(SpawnEnemyRoutine(wave, true));
+    }
+
+    /// <summary>
     /// Aynı zorluk derecesiyle oyunu 1. dalgadan yeniden başlatır
     /// </summary>
     public void RestartGame()
@@ -160,6 +309,13 @@ public class EnemySpawner : MonoBehaviour
         isWavesCompleted = false;
         isSpawning = false;
         wave = 1;
+
+        PlayerController player = FindObjectOfType<PlayerController>();
+        if (player != null)
+        {
+            player.SetPunchDamage(GetCurrentDifficultyPlayerDamage());
+            player.SetUppercutDamage(GetCurrentDifficultyPlayerUppercutDamage());
+        }
 
         Debug.Log($"<color=cyan>[YENİDEN BAŞLATILDI]</color> Mod: {currentDifficulty}");
         StartCoroutine(SpawnEnemyRoutine(wave, true));
@@ -177,6 +333,13 @@ public class EnemySpawner : MonoBehaviour
         isWavesCompleted = false;
         isSpawning = false;
         wave = 1;
+
+        PlayerController player = FindObjectOfType<PlayerController>();
+        if (player != null)
+        {
+            player.SetPunchDamage(20f);
+            player.SetUppercutDamage(30f);
+        }
     }
 
     /// <summary>
@@ -244,10 +407,14 @@ public class EnemySpawner : MonoBehaviour
                 EnemyController ec = newEnemy.GetComponent<EnemyController>();
                 if (ec != null)
                 {
+                    ec.SetAttackDamage(GetCurrentDifficultyDamage());
+                    ec.SetHealth(GetCurrentDifficultyEnemyHealth());
                     activeEnemies.Add(ec);
                     if (player != null)
                     {
                         player.OnEnemySpawned(ec);
+                        player.SetPunchDamage(GetCurrentDifficultyPlayerDamage());
+                        player.SetUppercutDamage(GetCurrentDifficultyPlayerUppercutDamage());
                     }
                 }
             }

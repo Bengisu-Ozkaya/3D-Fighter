@@ -186,3 +186,8 @@ MonoBehaviour:
   attackCooldown: 1.8
   moveSpeed: 1.2
   attackDamage: 10
+  standingYPosition: 0
+  fallenYPosition: -0.26
+  bodyRadius: 0.45
+  separationRadius: 0.6
+  separationStrength: 0.6

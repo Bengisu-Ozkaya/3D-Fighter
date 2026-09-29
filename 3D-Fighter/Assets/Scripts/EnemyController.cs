@@ -12,6 +12,16 @@ public class EnemyController : MonoBehaviour
     [SerializeField] float knockbackDistance = 0.2f;
 
     public float CurrentHealth => health;
+    public float MaxHealth => maxHealth;
+
+    /// <summary>
+    /// Spawner veya zorluk moduna göre düşmanın maksimum canını ve mevcut canını ayarlar
+    /// </summary>
+    public void SetHealth(float newMaxHealth)
+    {
+        maxHealth = newMaxHealth;
+        health = newMaxHealth;
+    }
 
     [SerializeField] Animator enemyAnimator;
 
@@ -30,6 +40,14 @@ public class EnemyController : MonoBehaviour
 
     void Start()
     {
+        // Aktif zorluk moduna göre saldırı hasarını ve canını belirle
+        EnemySpawner spawner = FindObjectOfType<EnemySpawner>();
+        if (spawner != null && spawner.IsGameStarted)
+        {
+            attackDamage = spawner.GetCurrentDifficultyDamage();
+            SetHealth(spawner.GetCurrentDifficultyEnemyHealth());
+        }
+
         //Enemy
         if (maxHealth <= 0) maxHealth = 30f;
         if (health <= 0) health = maxHealth;
@@ -48,17 +66,30 @@ public class EnemyController : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Spawner tarafından zorluk moduna uygun hasar değerini atar
+    /// </summary>
+    public void SetAttackDamage(float damage)
+    {
+        attackDamage = damage;
+    }
+
+    [Header("Pozisyon & Yükseklik (Y) Ayarları (Unity Inspector'dan Düzenlenebilir)")]
+    [Tooltip("Normal ayaktayken ve yürürken Y pozisyonu")]
+    [SerializeField] float standingYPosition = 0f;
+
+    [Tooltip("Düşman nakavt olup yere düştüğündeki Y pozisyonu")]
+    [SerializeField] float fallenYPosition = 0.45f;
+
     void LateUpdate()
     {
-        // Düşman ayaktayken animasyonların dikey kaydırmasını engeller ve Y pozisyonunu kesinlikle 0'a kilitler
-        if (!isDead)
+        // Düşman ayaktayken standingYPosition, nakavt olup yerde yatarken fallenYPosition
+        Vector3 pos = transform.position;
+        float targetY = isDead ? fallenYPosition : standingYPosition;
+        if (pos.y != targetY)
         {
-            Vector3 pos = transform.position;
-            if (pos.y != 0f)
-            {
-                pos.y = 0f;
-                transform.position = pos;
-            }
+            pos.y = targetY;
+            transform.position = pos;
         }
     }
 
@@ -111,9 +142,18 @@ public class EnemyController : MonoBehaviour
         }
     }
 
+    [Header("Çarpışma & Ayrışma (Avoidance) Ayarları")]
+    [Tooltip("Düşmanın gövde yarıçapı. İç içe geçmeleri engeller.")]
+    [SerializeField] float bodyRadius = 0.45f;
+    [Tooltip("Düşmanların birbirini hissettiği ve ayrışmaya başladığı mesafe")]
+    [SerializeField] float separationRadius = 0.40f;
+    [Tooltip("Düşmanların birbirini itme ve oyuncunun etrafına yayılma gücü")]
+    [SerializeField] float separationStrength = 0.40f;
+
     void CombatPlayer()
     {
         float distance = Vector3.Distance(transform.position, playerTransform.position);
+
         // 1. Oyuncuya doğru yüzünü dön (Y ekseninde)
         Vector3 lookDirection = (playerTransform.position - transform.position).normalized;
         lookDirection.y = 0;
@@ -122,40 +162,141 @@ public class EnemyController : MonoBehaviour
             transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(lookDirection), Time.deltaTime * 6f);
         }
 
-        // 2. Eğer oyuncu uzaktaysa ona doğru yürü
+        // 2. Diğer düşmanlardan kaçınma (Separation) vektörünü hesapla
+        Vector3 separationForce = CalculateSeparationForce();
+
+        // 3. Eğer oyuncu saldırı mesafesinden uzaktaysa ona doğru yürü
         if (distance > attackRange)
         {
             if (moveSpeed > 0)
             {
-                Vector3 target = new Vector3(playerTransform.position.x, 0f, playerTransform.position.z);
-                transform.position = Vector3.MoveTowards(transform.position, target, moveSpeed * Time.deltaTime);
+                Vector3 toPlayer = (playerTransform.position - transform.position).normalized;
+                toPlayer.y = 0f;
+
+                // Oyuncuya gidiş yönü ile diğer düşmanlardan kaçınma yönünü harmanla
+                Vector3 combinedDir = (toPlayer + separationForce).normalized;
+                Vector3 newPos = transform.position + combinedDir * moveSpeed * Time.deltaTime;
+                newPos.y = standingYPosition;
+                transform.position = newPos;
             }
         }
-
-        // 3. Yumruk mesafesindeyse bekleme süresi doldukça saldır
         else
         {
+            // Düşmanlar saldırı mesafesinde olsa bile üst üste binmesinler, hafifçe yana açılsınlar
+            if (separationForce.sqrMagnitude > 0.01f)
+            {
+                Vector3 sidePush = separationForce * (moveSpeed * 0.7f) * Time.deltaTime;
+                sidePush.y = 0f;
+                transform.position += sidePush;
+            }
+
             if (Time.time >= nextAttackTime)
             {
                 AttackPlayer();
                 nextAttackTime = Time.time + attackCooldown;
             }
         }
+
+        // 4. Sert iç içe geçmeleri anında çöz (Push-back)
+        ResolveOverlaps();
+    }
+
+    /// <summary>
+    /// Yakındaki diğer canlı düşmanları tespit edip onlardan uzaklaştıracak bir itme kuvveti üretir
+    /// </summary>
+    Vector3 CalculateSeparationForce()
+    {
+        Vector3 force = Vector3.zero;
+        EnemyController[] allEnemies = FindObjectsOfType<EnemyController>();
+
+        foreach (var other in allEnemies)
+        {
+            if (other == null || other == this || other.IsDead) continue;
+
+            Vector3 diff = transform.position - other.transform.position;
+            diff.y = 0f;
+            float dist = diff.magnitude;
+
+            if (dist > 0.001f && dist < separationRadius)
+            {
+                // Ne kadar yakınsa o kadar kuvvetle ters yöne iter
+                float factor = 1f - (dist / separationRadius);
+                force += diff.normalized * (factor * separationStrength);
+            }
+        }
+
+        return force;
+    }
+
+    /// <summary>
+    /// Hem diğer düşmanlarla hem de oyuncuyla temas ettiğinde gövdelerin iç içe girmesini engeller (Fiziksel İtme)
+    /// </summary>
+    void ResolveOverlaps()
+    {
+        // 1. Düşman - Düşman çarpışma engeli
+        EnemyController[] allEnemies = FindObjectsOfType<EnemyController>();
+        foreach (var other in allEnemies)
+        {
+            if (other == null || other == this || other.IsDead) continue;
+
+            Vector3 diff = transform.position - other.transform.position;
+            diff.y = 0f;
+            float dist = diff.magnitude;
+            float minDist = bodyRadius * 1.2f; // İki düşmanın temas çapı
+
+            if (dist < minDist && dist > 0.001f)
+            {
+                float overlap = minDist - dist;
+                Vector3 pushDir = diff.normalized;
+                transform.position += pushDir * (overlap * 0.5f);
+            }
+        }
+
+        // 2. Düşman - Oyuncu çarpışma engeli (Düşman oyuncunun içine giremez)
+        if (playerTransform != null && playerController != null && !playerController.IsDead)
+        {
+            Vector3 diff = transform.position - playerTransform.position;
+            diff.y = 0f;
+            float dist = diff.magnitude;
+            float minPlayerDist = bodyRadius + 0.45f; // Oyuncu gövdesi + Düşman gövdesi
+
+            if (dist < minPlayerDist && dist > 0.001f)
+            {
+                float overlap = minPlayerDist - dist;
+                Vector3 pushDir = diff.normalized;
+                transform.position += pushDir * overlap;
+            }
+        }
     }
 
     void AttackPlayer()
     {
-        // Animator'daki PunchLeft veya PunchRight trigger'larından birini rastgele tetikle
-        string punchTrigger = Random.value > 0.5f ? "PunchRight" : "PunchLeft";
-        if (enemyAnimator != null)
+        // Oyuncunun canını kontrol et: Can <= (attackDamage * 2) ise bitirici aparkat yap
+        float playerHealth = playerController != null ? playerController.GetHealth() : 100f;
+        bool isFinisher = playerHealth <= (attackDamage * 2f);
+
+        if (isFinisher)
         {
-            enemyAnimator.SetTrigger(punchTrigger);
+            Debug.Log($"<color=red>[DÜŞMAN BİTİRİCİ APARKAT ATTI!]</color> Oyuncu Canı: {playerHealth} <= {attackDamage * 2f}");
+            if (enemyAnimator != null)
+            {
+                enemyAnimator.CrossFadeInFixedTime("Uppercut", 0.12f);
+            }
+            StartCoroutine(DamagePlayerWithDelay(0.35f, true));
         }
-        // Yumruğun animasyon uzanma anında (örneğin 0.3 saniye sonra) hasar vermesi için Coroutine
-        StartCoroutine(DamagePlayerWithDelay(0.35f));
+        else
+        {
+            // Normal yumruk (PunchLeft veya PunchRight)
+            string punchTrigger = Random.value > 0.5f ? "PunchRight" : "PunchLeft";
+            if (enemyAnimator != null)
+            {
+                enemyAnimator.SetTrigger(punchTrigger);
+            }
+            StartCoroutine(DamagePlayerWithDelay(0.35f, false));
+        }
     }
 
-    IEnumerator DamagePlayerWithDelay(float delay)
+    IEnumerator DamagePlayerWithDelay(float delay, bool isFinisherUppercut = false)
     {
         yield return new WaitForSeconds(delay);
 
@@ -170,11 +311,23 @@ public class EnemyController : MonoBehaviour
             // Sadece oyuncu gerçekten vuruş mesafesindeyse (<= maxHitDistance) ve düşman oyuncuya bakıyorsa hasar ver
             if (currentDistance <= maxHitDistance && dot > 0.35f)
             {
-                playerController.TakeDamage(attackDamage);
+                // Bitirici aparkat ise bitirici hasar uygula (en az attackDamage * 2)
+                float damageToDeal = isFinisherUppercut ? Mathf.Max(attackDamage * 2f, 20f) : attackDamage;
+                playerController.TakeDamage(damageToDeal);
             }
             else
             {
                 Debug.Log("<color=yellow>[DÜŞMAN ISKALADI]</color> Oyuncu menzil dışına çıktı!");
+            }
+        }
+
+        // Aparkat tamamlandıktan sonra düşmanı gard (Idle) pozisyonuna geri döndür
+        if (isFinisherUppercut)
+        {
+            yield return new WaitForSeconds(0.65f);
+            if (enemyAnimator != null && !isDead)
+            {
+                enemyAnimator.CrossFadeInFixedTime("Idle", 0.2f);
             }
         }
     }
@@ -191,6 +344,12 @@ public class EnemyController : MonoBehaviour
 
         // Darbe alınca hafif geriye çekilme (Knockback)
         SetPosition();
+
+        // 20 ve üzeri güçlü darbelerde (Aparkat) ekstra sarsıntı tepkisi ver
+        if (damageAmount >= 20f)
+        {
+            transform.position += (-transform.forward) * (knockbackDistance * 1.4f);
+        }
 
         if (health <= 0)
         {
@@ -259,6 +418,7 @@ public class EnemyController : MonoBehaviour
         if (enemyAnimator != null)
         {
             enemyAnimator.SetBool("isDead", true);
+            enemyAnimator.CrossFadeInFixedTime("Knockout", 0.08f);
             StartCoroutine(WaitPos());
         }
 
@@ -274,17 +434,17 @@ public class EnemyController : MonoBehaviour
 
     IEnumerator DieRoutine()
     {
-        // Ölüm animasyonunun oynaması için 1 saniye bekle
-        yield return new WaitForSeconds(4f);
+        // Nakavt olduktan sonra yerde birkaç saniye (3.5 saniye) kalsın
+        yield return new WaitForSeconds(3.5f);
 
-        // Düşmanı yok et (EnemySpawner yok edildiğini görüp yenisini oluşturacak)
+        // Ardından yok olsun (EnemySpawner bunu görüp yeni düşmanı/dalgayı başlatır)
         Destroy(gameObject);
     }
 
     IEnumerator WaitPos()
     {
         yield return new WaitForSeconds(1.2f);
-        transform.position = new Vector3(transform.position.x, -0.26f, transform.position.z);
+        transform.position = new Vector3(transform.position.x, fallenYPosition, transform.position.z);
     }
 
     IEnumerator WaitPunch()
@@ -295,5 +455,16 @@ public class EnemyController : MonoBehaviour
     public float GetHealth()
     {
         return health;
+    }
+
+    private void OnDrawGizmosSelected()
+    {
+        // Gövde temas alanı (Kırmızı)
+        Gizmos.color = Color.red;
+        Gizmos.DrawWireSphere(transform.position + Vector3.up * 0.9f, bodyRadius);
+
+        // Ayrışma ve Kuşatma alanı (Sarı)
+        Gizmos.color = Color.yellow;
+        Gizmos.DrawWireSphere(transform.position + Vector3.up * 0.9f, separationRadius);
     }
 }
