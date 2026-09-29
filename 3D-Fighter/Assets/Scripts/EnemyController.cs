@@ -271,6 +271,17 @@ public class EnemyController : MonoBehaviour
 
     void AttackPlayer()
     {
+        // 1. Oyuncuya tam cepheden yüzünü dön
+        if (playerTransform != null)
+        {
+            Vector3 dir = (playerTransform.position - transform.position).normalized;
+            dir.y = 0f;
+            if (dir != Vector3.zero)
+            {
+                transform.rotation = Quaternion.LookRotation(dir);
+            }
+        }
+
         // Oyuncunun canını kontrol et: Can <= (attackDamage * 2) ise bitirici aparkat yap
         float playerHealth = playerController != null ? playerController.GetHealth() : 100f;
         bool isFinisher = playerHealth <= (attackDamage * 2f);
@@ -313,7 +324,7 @@ public class EnemyController : MonoBehaviour
             {
                 // Bitirici aparkat ise bitirici hasar uygula (en az attackDamage * 2)
                 float damageToDeal = isFinisherUppercut ? Mathf.Max(attackDamage * 2f, 20f) : attackDamage;
-                playerController.TakeDamage(damageToDeal);
+                playerController.TakeDamage(damageToDeal, isFinisherUppercut);
             }
             else
             {
@@ -333,22 +344,22 @@ public class EnemyController : MonoBehaviour
     }
 
     // Hasar alma fonksiyonu
-    public void TakeDamage(float damageAmount)
+    public void TakeDamage(float damageAmount, bool isUppercut = false)
     {
         StartCoroutine(WaitPunch());
 
         if (isDead) return;
 
         health -= damageAmount;
-        Debug.Log($"<color=orange>[DÜŞMAN DARBE ALDI]</color> {gameObject.name} -{damageAmount} can kaybetti! Kalan Can: {health}");
+        Debug.Log($"<color=orange>[DÜŞMAN DARBE ALDI]</color> {gameObject.name} -{damageAmount} can kaybetti! Kalan Can: {health} (Aparkat: {isUppercut})");
 
         // Darbe alınca hafif geriye çekilme (Knockback)
         SetPosition();
 
         // 20 ve üzeri güçlü darbelerde (Aparkat) ekstra sarsıntı tepkisi ver
-        if (damageAmount >= 20f)
+        if (isUppercut || damageAmount >= 20f)
         {
-            transform.position += (-transform.forward) * (knockbackDistance * 1.4f);
+            transform.position += (-transform.forward) * (knockbackDistance * 1.5f);
         }
 
         if (health <= 0)
@@ -359,7 +370,17 @@ public class EnemyController : MonoBehaviour
         {
             if (enemyAnimator != null)
             {
-                enemyAnimator.SetTrigger("GetHit");
+                if (isUppercut || damageAmount >= 20f)
+                {
+                    enemyAnimator.ResetTrigger("GetHit");
+                    enemyAnimator.SetTrigger("GetHeadHit");
+                    enemyAnimator.CrossFadeInFixedTime("Head Hit", 0.08f);
+                }
+                else
+                {
+                    enemyAnimator.ResetTrigger("GetHeadHit");
+                    enemyAnimator.SetTrigger("GetHit");
+                }
             }
         }
     }
@@ -418,6 +439,8 @@ public class EnemyController : MonoBehaviour
         if (enemyAnimator != null)
         {
             enemyAnimator.SetBool("isDead", true);
+            enemyAnimator.ResetTrigger("GetHit");
+            enemyAnimator.ResetTrigger("GetHeadHit");
             enemyAnimator.CrossFadeInFixedTime("Knockout", 0.08f);
             StartCoroutine(WaitPos());
         }

@@ -187,7 +187,7 @@ MonoBehaviour:
   moveSpeed: 1.2
   attackDamage: 10
   standingYPosition: 0
-  fallenYPosition: -0.26
+  fallenYPosition: -0.1
   bodyRadius: 0.45
   separationRadius: 0.6
   separationStrength: 0.6

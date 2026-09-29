@@ -85,6 +85,8 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private GameObject startPanel;
     [SerializeField] private UIManager uiManager;
 
+    private int playerDoBlock;
+
     void Start()
     {
         startPosition = new Vector3(transform.position.x, standingYPosition, transform.position.z);
@@ -166,8 +168,6 @@ public class PlayerController : MonoBehaviour
         // Oyuncu öldüyse, karşı taraf ölüp Show Pose yapılıyorsa veya tüm dalgalar bittiyse hareket edip yumruk atamasın
         if (isDead || isEnemyDead || isGameCompleted) return;
 
-        //MobilController();
-
         // 1. Blok Kontrolü ("F" Tuşu)
         if (Input.GetKeyDown(KeyCode.F))
         {
@@ -183,6 +183,30 @@ public class PlayerController : MonoBehaviour
         if (Input.GetKeyUp(KeyCode.F))
         {
             if (isBlocking)
+            {
+                isBlocking = false;
+                if (playerAnim != null)
+                {
+                    playerAnim.CrossFadeInFixedTime("Idle", 0.15f);
+                }
+            }
+        }
+
+        //Mobil Block
+        if(playerDoBlock == 1)
+        {
+            if (!isPunching)
+            {
+                isBlocking = true;
+                if (playerAnim != null)
+                {
+                    playerAnim.CrossFadeInFixedTime("Center Block", 0.1f);
+                }
+            }
+        }
+        else
+        {
+             if (isBlocking)
             {
                 isBlocking = false;
                 if (playerAnim != null)
@@ -208,18 +232,13 @@ public class PlayerController : MonoBehaviour
         }
 
         // 4. Normal Yumruk Tuşu (Space veya Sol Tık)
-        if (Input.GetKeyDown(KeyCode.Space) || (Input.GetMouseButtonDown(0) && (startPanel == null || !startPanel.activeSelf)))
+        if (Input.GetKeyDown(KeyCode.Space) /*|| (Input.GetMouseButtonDown(0) && (startPanel == null || !startPanel.activeSelf))*/)
         {
             if (!isPunching)
             {
                 ExecutePunch();
             }
         }
-    }
-
-    void MobilController()
-    {
-        
     }
 
     void LateUpdate()
@@ -288,6 +307,13 @@ public class PlayerController : MonoBehaviour
 
     void HandleMovement()
     {
+        // Yumruk atarken hareket etmesin ve yönünü doğrudan rakibe kilitlesin
+        if (isPunching)
+        {
+            FaceOpponentOnPunch();
+            return;
+        }
+
         float h = 0f;
         float v = 0f;
 
@@ -307,59 +333,51 @@ public class PlayerController : MonoBehaviour
             // Düşmanların içinden geçmeyi engelle ve kenarından yumuşakça kaydır
             targetPos = ResolveCollisionWithEnemies(targetPos);
             transform.position = targetPos;
+        }
 
-            // 2. Karakterin rotasyonu:
-            // S tuşuna basılıp geri çekilirken karakter arkasını kameraya dönmesin;
-            // yüzü rakibe / kameranın baktığı yöne baksın, sırtı kameraya dönük geri adım atsın.
-            Vector3 facingDir;
-            if (Input.GetKey(KeyCode.S))
-            {
-                EnemyController targetEnemy = (enemyController != null && !enemyController.IsDead)
-                    ? enemyController
-                    : GetClosestLivingEnemy();
+        // 2. Karakterin rotasyonu:
+        // Oyuncu sağa, sola veya geriye hareket ederken asla yönü dönmesin;
+        // sırtı her zaman kameraya dönük kalsın ve yüzü rakibe / ileriye baksın.
+        Vector3 facingDir = GetCameraForward();
+        EnemyController targetEnemy = (enemyController != null && !enemyController.IsDead)
+            ? enemyController
+            : GetClosestLivingEnemy();
 
-                if (targetEnemy != null && !targetEnemy.IsDead)
-                {
-                    facingDir = (targetEnemy.transform.position - transform.position);
-                    facingDir.y = 0f;
-                    if (facingDir == Vector3.zero)
-                    {
-                        facingDir = GetCameraForward();
-                    }
-                }
-                else
-                {
-                    facingDir = GetCameraForward();
-                }
-            }
-            else
+        if (targetEnemy != null && !targetEnemy.IsDead)
+        {
+            Vector3 dirToEnemy = targetEnemy.transform.position - transform.position;
+            dirToEnemy.y = 0f;
+            // Düşman oyuncunun önündeyse (kameranın baktığı genel doğrultuda) düşmana odaklansın
+            if (dirToEnemy.sqrMagnitude > 0.05f && Vector3.Dot(dirToEnemy.normalized, GetCameraForward()) > 0.1f)
             {
-                facingDir = moveDir;
+                facingDir = dirToEnemy;
             }
+        }
 
-            if (facingDir != Vector3.zero)
-            {
-                Quaternion targetRot = Quaternion.LookRotation(facingDir.normalized);
-                transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * rotationSpeed);
-            }
+        if (facingDir != Vector3.zero)
+        {
+            Quaternion targetRot = Quaternion.LookRotation(facingDir.normalized);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * rotationSpeed);
         }
 
         // 3. Animasyon parametrelerini güncelle
         if (playerAnim != null)
         {
+            // Sağa hareket (D tuşu, h < -0.1f) -> rightMove animasyonu
             if (h < -0.1f)
-            {
-                playerAnim.SetBool("leftMove", true);
-                playerAnim.SetBool("rightMove", false);
-            }
-            else if (h > 0.1f)
             {
                 playerAnim.SetBool("rightMove", true);
                 playerAnim.SetBool("leftMove", false);
             }
+            // Sola hareket (A tuşu, h > 0.1f) -> leftMove animasyonu
+            else if (h > 0.1f)
+            {
+                playerAnim.SetBool("leftMove", true);
+                playerAnim.SetBool("rightMove", false);
+            }
+            // Düz ileri veya geri giderken adım animasyonunu oynat
             else if (Mathf.Abs(v) > 0.1f)
             {
-                // Düz ileri veya geri giderken adım animasyonunu oynat
                 playerAnim.SetBool("leftMove", false);
                 playerAnim.SetBool("rightMove", true);
             }
@@ -503,7 +521,7 @@ public class PlayerController : MonoBehaviour
                     if (Vector3.Dot(transform.forward, dirToEnemy) >= 0.15f)
                     {
                         hasHitCurrentPunch = true;
-                        hitEnemy.TakeDamage(uppercutDamage); // 20 Hasar!
+                        hitEnemy.TakeDamage(uppercutDamage, true); // 20 Hasar ve Aparkat (Head Hit)!
                         Debug.Log($"<color=green>[GÜÇLÜ APARKAT İSABET ETTİ!]</color> {hitEnemy.name} düşmanına {uppercutDamage} hasar verildi!");
                         enemyController = hitEnemy;
                         return;
@@ -527,7 +545,7 @@ public class PlayerController : MonoBehaviour
                 if (Vector3.Dot(transform.forward, dir) >= 0.2f)
                 {
                     hasHitCurrentPunch = true;
-                    closeEnemy.TakeDamage(uppercutDamage); // 20 Hasar!
+                    closeEnemy.TakeDamage(uppercutDamage, true); // 20 Hasar ve Aparkat (Head Hit)!
                     Debug.Log($"<color=green>[GÜÇLÜ APARKAT İSABET ETTİ!]</color> {closeEnemy.name} düşmanına {uppercutDamage} hasar verildi!");
                     enemyController = closeEnemy;
                 }
@@ -565,7 +583,7 @@ public class PlayerController : MonoBehaviour
         {
             Vector3 dirToEnemy = enemy.transform.position - transform.position;
             dirToEnemy.y = 0f;
-            if (dirToEnemy.sqrMagnitude > 0.05f && dirToEnemy.magnitude <= 3.5f)
+            if (dirToEnemy.sqrMagnitude > 0.01f)
             {
                 transform.rotation = Quaternion.LookRotation(dirToEnemy.normalized);
             }
@@ -856,7 +874,7 @@ public class PlayerController : MonoBehaviour
         Gizmos.DrawWireSphere(transform.position + Vector3.up * 0.9f, playerBodyRadius);
     }
 
-    public void TakeDamage(float damageAmount)
+    public void TakeDamage(float damageAmount, bool isUppercut = false)
     {
         if (isDead) return;
 
@@ -874,7 +892,13 @@ public class PlayerController : MonoBehaviour
 
         StartCoroutine(WaitPunch());
         playerHealth -= damageAmount;
-        Debug.Log($"<color=cyan>[OYUNCU DARBE ALDI]</color> Kalan Can: {playerHealth}");
+        Debug.Log($"<color=cyan>[OYUNCU DARBE ALDI]</color> Kalan Can: {playerHealth} (Aparkat: {isUppercut})");
+
+        // Aparkat darbesinde sarsıntı tepkisi / geri itme
+        if (isUppercut || damageAmount >= 20f)
+        {
+            transform.position += (-transform.forward) * 0.25f;
+        }
 
         if (playerHealth <= 0)
         {
@@ -884,7 +908,17 @@ public class PlayerController : MonoBehaviour
         {
             if (playerAnim != null)
             {
-                playerAnim.SetTrigger("GetHit");
+                if (isUppercut || damageAmount >= 20f)
+                {
+                    playerAnim.ResetTrigger("GetHit");
+                    playerAnim.SetTrigger("GetHeadHit");
+                    playerAnim.CrossFadeInFixedTime("Head Hit", 0.08f);
+                }
+                else
+                {
+                    playerAnim.ResetTrigger("GetHeadHit");
+                    playerAnim.SetTrigger("GetHit");
+                }
             }
         }
     }
@@ -910,6 +944,7 @@ public class PlayerController : MonoBehaviour
             playerAnim.SetBool("rightMove", false);
             playerAnim.SetBool("isDeadEnemy", false);
             playerAnim.ResetTrigger("GetHit");
+            playerAnim.ResetTrigger("GetHeadHit");
             playerAnim.ResetTrigger("PunchLeft");
             playerAnim.ResetTrigger("PunchRight");
             playerAnim.CrossFadeInFixedTime("Knockout", 0.08f);
@@ -1094,5 +1129,26 @@ public class PlayerController : MonoBehaviour
     {
         yield return new WaitForSeconds(1.2f);
         transform.position = new Vector3(transform.position.x, fallenYPosition, transform.position.z);
+    }
+
+    public void PunchButton()
+    {
+        if (!isPunching)
+        {
+            ExecutePunch();
+        }
+    }
+
+    public void UppercutButton()
+    {
+        if (!isPunching)
+        {
+            ExecuteUppercut();
+        }
+    }
+
+    public void Blocking(int doBlock)
+    {
+        this.playerDoBlock = doBlock;
     }
 }
