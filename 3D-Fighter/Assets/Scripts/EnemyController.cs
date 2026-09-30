@@ -89,6 +89,7 @@ public class EnemyController : MonoBehaviour
         if (pos.y != targetY)
         {
             pos.y = targetY;
+            transform.position = pos;
         }
         if (!isDead)
         {
@@ -192,6 +193,7 @@ public class EnemyController : MonoBehaviour
             {
                 Vector3 sidePush = separationForce * (moveSpeed * 0.7f) * Time.deltaTime;
                 sidePush.y = 0f;
+                transform.position += sidePush;
                 Vector3 sidePos = transform.position + sidePush;
                 sidePos = RingBoundary.ClampToArena(sidePos, bodyRadius);
                 transform.position = sidePos;
@@ -369,6 +371,7 @@ public class EnemyController : MonoBehaviour
         // 20 ve üzeri güçlü darbelerde (Aparkat) ekstra sarsıntı tepkisi ver
         if (isUppercut || damageAmount >= 20f)
         {
+            transform.position += (-transform.forward) * (knockbackDistance * 1.5f);
             Vector3 pushPos = transform.position + (-transform.forward) * (knockbackDistance * 1.5f);
             pushPos = RingBoundary.ClampToArena(pushPos, bodyRadius);
             transform.position = pushPos;
@@ -414,6 +417,7 @@ public class EnemyController : MonoBehaviour
         yield return new WaitForSeconds(0.6f);
 
         // Karakterin geri yönüne (veya Z ekseninde geriye) hafifçe iter
+        transform.position += new Vector3(0, 0, knockbackDistance);
         Vector3 kbPos = transform.position + new Vector3(0, 0, knockbackDistance);
         kbPos = RingBoundary.ClampToArena(kbPos, bodyRadius);
         transform.position = kbPos;
@@ -481,6 +485,7 @@ public class EnemyController : MonoBehaviour
     IEnumerator WaitPos()
     {
         yield return new WaitForSeconds(1.2f);
+        transform.position = new Vector3(transform.position.x, fallenYPosition, transform.position.z);
         Vector3 fallPos = new Vector3(transform.position.x, fallenYPosition, transform.position.z);
         fallPos = RingBoundary.ClampToArena(fallPos, bodyRadius);
         transform.position = fallPos;

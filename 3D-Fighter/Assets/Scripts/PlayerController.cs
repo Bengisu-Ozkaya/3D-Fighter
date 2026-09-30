@@ -89,6 +89,8 @@ public class PlayerController : MonoBehaviour
 
     private int playerDoBlock;
 
+    bool usingUlti = false;
+
     void Start()
     {
         startPosition = new Vector3(transform.position.x, standingYPosition, transform.position.z);
@@ -175,8 +177,8 @@ public class PlayerController : MonoBehaviour
         // Oyuncu öldüyse veya tüm dalgalar bittiyse (oyun tamamlandıysa) hareket edip yumruk atamasın
         if (isDead || isGameCompleted) return;
 
-        // 1. Blok Kontrolü (Klavye "F" Tuşu veya Mobil Blok Butonu)
-        bool wantBlock = Input.GetKey(KeyCode.F) || (playerDoBlock == 1);
+        // 1. Blok Kontrolü (Klavye Space Tuşu veya Mobil Blok Butonu)
+        bool wantBlock = Input.GetKey(KeyCode.Space) || (playerDoBlock == 1);
 
         if (wantBlock)
         {
@@ -207,7 +209,17 @@ public class PlayerController : MonoBehaviour
         // 2. Karakter Hareketi
         HandleMovement();
 
+        if (Input.GetKeyDown(KeyCode.R))
+        {
+            if (!usingUlti)
+            {
+                Debug.Log("GÖKTE NE VAR?");
+                ExecuteUlti();
+            }
+        }
+
         // 3. Aparkat Tuşu ("E" Tuşu - 20 Can Hasarı)
+
         if (Input.GetKeyDown(KeyCode.E))
         {
             if (!isPunching)
@@ -216,8 +228,8 @@ public class PlayerController : MonoBehaviour
             }
         }
 
-        // 4. Normal Yumruk Tuşu (Space veya Sol Tık)
-        if (Input.GetKeyDown(KeyCode.Space) /*|| (Input.GetMouseButtonDown(0) && (startPanel == null || !startPanel.activeSelf))*/)
+        // 4. Normal Yumruk Tuşu (F veya Sol Tık)
+        if (Input.GetKeyDown(KeyCode.F))
         {
             if (!isPunching)
             {
@@ -454,6 +466,22 @@ public class PlayerController : MonoBehaviour
         }
 
         StartCoroutine(UppercutRoutine());
+    }
+
+    void ExecuteUlti()
+    {
+        if (usingUlti) return;
+        usingUlti = true;
+        Debug.Log("YUMRUUUKKK");
+
+        StartCoroutine(WaitForUlti());
+    }
+
+    IEnumerator WaitForUlti()
+    {
+        yield return new WaitForSeconds(5f);
+        usingUlti = false;
+        Debug.Log("Ulti tekrar hazır!");
     }
 
     IEnumerator UppercutRoutine()
@@ -884,7 +912,7 @@ public class PlayerController : MonoBehaviour
     {
         if (isDead) return;
 
-        // Blok Kontrolü: Oyuncu F tuşuyla blok yapıyorsa hasar almaz
+        // Blok Kontrolü: Oyuncu Space tuşuyla blok yapıyorsa hasar almaz
         if (isBlocking)
         {
             Debug.Log("<color=green>[BLOK BAŞARILI!]</color> Oyuncu saldırıyı blokladı, hasar almadı!");
@@ -1036,17 +1064,30 @@ public class PlayerController : MonoBehaviour
     public void TeleportToArena(Vector3 targetPos, Quaternion targetRot, float groundY = 0f)
     {
         standingYPosition = groundY;
-        fallenYPosition = groundY + 0.45f;
-        standUpYPosition = groundY + 0.45f;
+        fallenYPosition = groundY + -0.3f;
+        standUpYPosition = groundY;
 
         transform.position = targetPos;
         transform.rotation = targetRot;
 
+        startPosition = targetPos;
+        startRotation = targetRot;
+
+        isGameCompleted = false;
+        isEnemyDead = false;
+        isDead = false;
+        isStandingUp = false;
         isPunching = false;
         isPunchActive = false;
         isBlocking = false;
         playerDoBlock = 0;
         hasHitCurrentPunch = false;
+
+        Collider col = GetComponent<Collider>();
+        if (col != null)
+        {
+            col.enabled = true;
+        }
 
         if (joystick != null)
         {
@@ -1056,6 +1097,11 @@ public class PlayerController : MonoBehaviour
         if (playerAnim != null)
         {
             playerAnim.CrossFadeInFixedTime("Idle", 0.1f);
+            playerAnim.SetBool("isDead", false);
+            playerAnim.SetBool("isDeadEnemy", false);
+            playerAnim.SetBool("leftMove", false);
+            playerAnim.SetBool("rightMove", false);
+            playerAnim.CrossFadeInFixedTime("Idle", 0.15f);
         }
     }
 

@@ -9,6 +9,24 @@ public enum Difficulty
     Hard
 }
 
+[System.Serializable]
+public class ArenaLightTier
+{
+    [Tooltip("Kademe İsmi (Örn: Dalga 1-5)")]
+    public string tierName;
+    [Tooltip("Bu kademedeki Point Light ışık rengi")]
+    public Color lightColor;
+    [Tooltip("Işık şiddeti / parlaklığı (Intensity)")]
+    public float intensity;
+
+    public ArenaLightTier(string name, Color color, float intensity = 10f)
+    {
+        this.tierName = name;
+        this.lightColor = color;
+        this.intensity = intensity;
+    }
+}
+
 public class EnemySpawner : MonoBehaviour
 {
     [Header("Dalga ve Düşman Ayarları")]
@@ -21,8 +39,16 @@ public class EnemySpawner : MonoBehaviour
     [SerializeField] float spawnRotationY = 0f;
     [Tooltip("Sonsuz dalgalarda bir dalgada aynı anda doğabilecek maksimum düşman sayısı")]
     [SerializeField] int maxEnemiesPerWave = 8;
-    [Tooltip("Environment (Saha) değiştirilirken araya giren bekleme süresi (saniye)")]
-    [SerializeField] float environmentTransitionDelay = 1.2f;
+
+    [Header("Environment 1 Arena Işık Ayarları (Point Lights)")]
+    [Tooltip("Kaç dövüş/dalga sonra ışık renginin daha yırtıcı renge değişeceği (İstenen: Her 5 dalgada bir)")]
+    [SerializeField] private int wavesPerColorTier = 5;
+    [Tooltip("Işık rengi geçiş yumuşatma süresi (saniye)")]
+    [SerializeField] private float colorTransitionDuration = 1.5f;
+    [Tooltip("Environment 1 altındaki Light objesinde bulunan Point Light'lar. Boş bırakılırsa hiyerarşiden otomatik bulunur.")]
+    [SerializeField] private List<Light> arenaPointLights = new List<Light>();
+    [Tooltip("Her 5 dalgada bir devreye girecek yüksek kontrastlı ve yırtıcı arena ışık kademeleri")]
+    [SerializeField] private List<ArenaLightTier> arenaLightTiers = new List<ArenaLightTier>();
 
     [Header("Zorluk Hasar Ayarları (Enemy Attack Damage)")]
     [Tooltip("Kolay modda düşmanların oyuncuya vereceği hasar")]
@@ -70,11 +96,24 @@ public class EnemySpawner : MonoBehaviour
     private bool isGameStarted = false;
     private bool isSpawning = false;
     private bool isChangingEnvironment = false;
+    private Coroutine lightTransitionCoroutine = null;
 
     public int CurrentWave => wave;
     public bool IsGameStarted => isGameStarted;
     public Difficulty CurrentDifficulty => currentDifficulty;
     public int CurrentEnvironmentIndex => currentEnvironmentIndex;
+
+    void Awake()
+    {
+        EnsureDefaultLightTiers();
+        FindArenaPointLightsIfNeeded();
+    }
+
+    void Start()
+    {
+        // Başlangıçta 1. sahayı (Environment 1) aktif kıl ve ışıkları başlangıç kademesine (Beyaz) ayarla
+        UpdateArenaLighting(1, immediate: true);
+    }
 
     /// <summary>
     /// Aktif zorluk derecesine göre düşmanın vereceği hasar miktarını döner
@@ -149,16 +188,11 @@ public class EnemySpawner : MonoBehaviour
     }
 
     /// <summary>
-    /// Her 3 dalgada bir ortamın (Environment) değişmesi için hangi indeksin aktif olacağını hesaplar
-    /// 1, 2, 3 -> Environment 1 (Index 0)
-    /// 4, 5, 6 -> Environment 2 (Index 1)
-    /// 7, 8, 9 -> Environment 1 (veya ileride 3)
+    /// Environment 2 devre dışı bırakıldığı için daima Environment 1 (Index 0) döner
     /// </summary>
     public int GetEnvironmentIndexForWave(int waveNumber)
     {
-        int envCount = RingBoundary.Instance != null ? RingBoundary.Instance.EnvironmentCount : 2;
-        if (envCount <= 0) envCount = 2;
-        return ((waveNumber - 1) / 3) % envCount;
+        return 0;
     }
 
     /// <summary>
@@ -231,6 +265,9 @@ public class EnemySpawner : MonoBehaviour
             RingBoundary.Instance.SwitchEnvironment(0);
         }
 
+        // 1. Dalga arena ışık rengini (Beyaz) anında uygula
+        UpdateArenaLighting(wave, immediate: true);
+
         float dmg = GetCurrentDifficultyDamage();
         float hp = GetCurrentDifficultyEnemyHealth();
         float playerDmg = GetCurrentDifficultyPlayerDamage();
@@ -296,13 +333,15 @@ public class EnemySpawner : MonoBehaviour
         isSpawning = false;
         isChangingEnvironment = false;
 
-        // Öldüğü dalganın ortamına uygun sahayı aktif et
-        int targetEnvIndex = GetEnvironmentIndexForWave(wave);
+        // Environment 1 daima aktif
         if (RingBoundary.Instance != null)
         {
-            RingBoundary.Instance.SwitchEnvironment(targetEnvIndex);
+            RingBoundary.Instance.SwitchEnvironment(0);
         }
-        currentEnvironmentIndex = targetEnvIndex;
+        currentEnvironmentIndex = 0;
+
+        // Öldüğü dalganın ışık rengini anında uygula (Örn: Dalga 6-10 ise Mavi, 11-15 ise Kırmızı vb.)
+        UpdateArenaLighting(wave, immediate: true);
 
         PlayerController player = FindObjectOfType<PlayerController>();
         if (player != null)
@@ -311,7 +350,7 @@ public class EnemySpawner : MonoBehaviour
             player.SetUppercutDamage(GetCurrentDifficultyPlayerUppercutDamage());
         }
 
-        Debug.Log($"<color=cyan>[ÖLÜNEN DALGA YENİDEN BAŞLATILIYOR]</color> Dalga {wave} - Saha: #{currentEnvironmentIndex + 1} - Mod: {currentDifficulty}");
+        Debug.Log($"<color=cyan>[ÖLÜNEN DALGA YENİDEN BAŞLATILIYOR]</color> Dalga {wave} - Saha: #1 - Mod: {currentDifficulty}");
         StartCoroutine(SpawnEnemyRoutine(wave, true));
     }
 
@@ -333,6 +372,9 @@ public class EnemySpawner : MonoBehaviour
         {
             RingBoundary.Instance.SwitchEnvironment(0);
         }
+
+        // Başlangıç dalgası ışığını anında uygula (Beyaz)
+        UpdateArenaLighting(1, immediate: true);
 
         PlayerController player = FindObjectOfType<PlayerController>();
         if (player != null)
@@ -363,6 +405,9 @@ public class EnemySpawner : MonoBehaviour
         {
             RingBoundary.Instance.SwitchEnvironment(0);
         }
+
+        // Işıkları başlangıç haline getir (Beyaz)
+        UpdateArenaLighting(1, immediate: true);
 
         PlayerController player = FindObjectOfType<PlayerController>();
         if (player != null)
@@ -400,15 +445,20 @@ public class EnemySpawner : MonoBehaviour
     {
         isSpawning = true;
 
-        // Her 3 dalga tamamlandığında (Örn: Dalga 4, 7, 10...) Environment değiştir
-        int targetEnvIndex = GetEnvironmentIndexForWave(currentWave);
-        if (targetEnvIndex != currentEnvironmentIndex)
+        // Her 5 dalgada bir arena Point Light renklerini daha yırtıcı renge geçir (Örn: Dalga 6, 11, 16...)
+        if ((currentWave - 1) % wavesPerColorTier == 0 && currentWave > 1)
         {
-            yield return StartCoroutine(ChangeEnvironmentRoutine(targetEnvIndex, currentWave));
+            ArenaLightTier tier = GetLightTierForWave(currentWave);
+            Debug.Log($"<color=cyan>[ARENA IŞIKLARI]</color> {wavesPerColorTier} Dövüş tamamlandı! Point Light'lar yeni yırtıcı renge geçiyor: <color=yellow>{tier.tierName}</color> (Dalga {currentWave})");
+            UpdateArenaLighting(currentWave, immediate: false);
+        }
+        else if (isFirst)
+        {
+            UpdateArenaLighting(currentWave, immediate: true);
         }
 
         int enemyCount = GetEnemyCountForWave(currentWave);
-        Debug.Log($"<color=yellow>[YENİ DALGA GELİYOR]</color> Dalga {currentWave} ({enemyCount} Düşman) - Saha: #{currentEnvironmentIndex + 1} - Zorluk: {currentDifficulty}");
+        Debug.Log($"<color=yellow>[YENİ DALGA GELİYOR]</color> Dalga {currentWave} ({enemyCount} Düşman) - Saha: #1 - Zorluk: {currentDifficulty}");
 
         if (!isFirst)
         {
@@ -424,24 +474,212 @@ public class EnemySpawner : MonoBehaviour
     }
 
     /// <summary>
-    /// Her 3 dalgada bir çağrılır: Sahayı, collider'ları, oyuncuyu ve spawner'ı yeni çevreye taşır
+    /// Varsayılan yırtıcı arena ışık renk paletini kurar (Dalga 1-5: Beyaz, Dalga 6-10: Neon Mavi, Dalga 11-15: Kırmızı...)
     /// </summary>
-    IEnumerator ChangeEnvironmentRoutine(int targetEnvIndex, int targetWave)
+    private void EnsureDefaultLightTiers()
     {
-        isChangingEnvironment = true;
-        Debug.Log($"<color=cyan>[ENVIRONMENT DEĞİŞİYOR]</color> 3 Dalga atlatıldı! Yeni Sahaya Geçiliyor: Saha #{targetEnvIndex + 1} (Dalga {targetWave})");
-
-        ClearAllEnemies();
-
-        if (RingBoundary.Instance != null)
+        if (arenaLightTiers == null)
         {
-            RingBoundary.Instance.SwitchEnvironment(targetEnvIndex);
+            arenaLightTiers = new List<ArenaLightTier>();
         }
-        currentEnvironmentIndex = targetEnvIndex;
 
-        // Yeni ortama geçiş anında oyuncunun hazır olması için kısa bir geçiş beklemesi
-        yield return new WaitForSeconds(environmentTransitionDelay);
-        isChangingEnvironment = false;
+        if (arenaLightTiers.Count == 0)
+        {
+            // 1. Kademe: Beyaz (Normal / Doğal Arena Işığı)
+            arenaLightTiers.Add(new ArenaLightTier("Dalga 1-5 (Beyaz / Doğal Işık)", Color.white, 10f));
+            // 2. Kademe: Neon Elektrik Mavisi (Yırtıcı Soğuk Ton)
+            arenaLightTiers.Add(new ArenaLightTier("Dalga 6-10 (Yırtıcı Neon Mavi)", new Color(0f, 0.65f, 1f, 1f), 11f));
+            // 3. Kademe: Şiddetli Kan Kırmızısı (Yırtıcı Saldırgan Ton)
+            arenaLightTiers.Add(new ArenaLightTier("Dalga 11-15 (Kan Kırmızısı / Crimson)", new Color(1f, 0.08f, 0.08f, 1f), 12f));
+            // 4. Kademe: Derin Yırtıcı Neon Mor / Violet
+            arenaLightTiers.Add(new ArenaLightTier("Dalga 16-20 (Yırtıcı Neon Mor)", new Color(0.65f, 0f, 1f, 1f), 12f));
+            // 5. Kademe: Cehennem Ateşi / Lav Turuncusu
+            arenaLightTiers.Add(new ArenaLightTier("Dalga 21-25 (Alev Turuncusu)", new Color(1f, 0.35f, 0f, 1f), 12f));
+            // 6. Kademe: Tehlikeli Zehir Yeşili / Toxic Green
+            arenaLightTiers.Add(new ArenaLightTier("Dalga 26-30 (Zehirli Asit Yeşili)", new Color(0f, 1f, 0.35f, 1f), 11f));
+        }
+    }
+
+    /// <summary>
+    /// Environment 1 altındaki Light objesinin altındaki Point Light'ları otomatik bulur
+    /// </summary>
+    public void FindArenaPointLightsIfNeeded()
+    {
+        arenaPointLights.RemoveAll(l => l == null);
+        if (arenaPointLights.Count > 0) return;
+
+        // 1. Sahnedeki "Environment 1" veya "Environment1" GameObject'ini ara
+        GameObject env1Go = null;
+        foreach (var rootGo in UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects())
+        {
+            string trimmed = rootGo.name.Trim();
+            if (trimmed.Equals("Environment 1", System.StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Equals("Environment1", System.StringComparison.OrdinalIgnoreCase))
+            {
+                env1Go = rootGo;
+                break;
+            }
+        }
+
+        Transform lightParent = null;
+        if (env1Go != null)
+        {
+            lightParent = env1Go.transform.Find("Light");
+        }
+
+        if (lightParent == null)
+        {
+            GameObject lGo = GameObject.Find("Light");
+            if (lGo != null) lightParent = lGo.transform;
+        }
+
+        if (lightParent != null)
+        {
+            // Sadece LightType.Point olanları al (Directional Light etkilenmez)
+            Light[] found = lightParent.GetComponentsInChildren<Light>(true);
+            foreach (var l in found)
+            {
+                if (l != null && l.type == LightType.Point)
+                {
+                    arenaPointLights.Add(l);
+                }
+            }
+            Debug.Log($"<color=cyan>[EnemySpawner]</color> Environment 1/Light altındaki {arenaPointLights.Count} adet Point Light sisteme bağlandı.");
+        }
+        else
+        {
+            // Fallback: Sahnede adı "Point Light" olan veya tipi Point olan ışıkları al
+            foreach (var l in FindObjectsOfType<Light>(true))
+            {
+                if (l != null && l.type == LightType.Point && l.name.IndexOf("Point Light", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    arenaPointLights.Add(l);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Belirtilen dalgaya karşılık gelen ışık kademesini döner (5 dövüşte bir değişir, bitince yırtıcı renkler döner)
+    /// </summary>
+    public ArenaLightTier GetLightTierForWave(int waveNumber)
+    {
+        EnsureDefaultLightTiers();
+        if (arenaLightTiers == null || arenaLightTiers.Count == 0)
+        {
+            return new ArenaLightTier("Beyaz", Color.white, 10f);
+        }
+
+        int tierIndex = (waveNumber - 1) / wavesPerColorTier;
+        if (tierIndex < arenaLightTiers.Count)
+        {
+            return arenaLightTiers[tierIndex];
+        }
+
+        // Önceden tanımlı kademeler bittiğinde 0. indeksteki beyazı atlayıp yırtıcı renkler arasında döngüye devam et
+        if (arenaLightTiers.Count > 1)
+        {
+            int predatoryCount = arenaLightTiers.Count - 1;
+            int loopedIndex = 1 + ((tierIndex - 1) % predatoryCount);
+            return arenaLightTiers[loopedIndex];
+        }
+
+        return arenaLightTiers[arenaLightTiers.Count - 1];
+    }
+
+    /// <summary>
+    /// Environment 1 altındaki Point Light'ların rengini ve parlaklığını günceller
+    /// </summary>
+    public void UpdateArenaLighting(int waveNumber, bool immediate = false)
+    {
+        FindArenaPointLightsIfNeeded();
+        if (arenaPointLights == null || arenaPointLights.Count == 0) return;
+
+        ArenaLightTier targetTier = GetLightTierForWave(waveNumber);
+        Color targetColor = targetTier.lightColor;
+        float targetIntensity = targetTier.intensity;
+
+        if (immediate || colorTransitionDuration <= 0f)
+        {
+            if (lightTransitionCoroutine != null)
+            {
+                StopCoroutine(lightTransitionCoroutine);
+                lightTransitionCoroutine = null;
+            }
+
+            foreach (var l in arenaPointLights)
+            {
+                if (l != null)
+                {
+                    l.color = targetColor;
+                    l.intensity = targetIntensity;
+                }
+            }
+        }
+        else
+        {
+            if (lightTransitionCoroutine != null)
+            {
+                StopCoroutine(lightTransitionCoroutine);
+            }
+            lightTransitionCoroutine = StartCoroutine(TransitionLightRoutine(targetColor, targetIntensity, colorTransitionDuration));
+        }
+    }
+
+    /// <summary>
+    /// Işık rengi ve yoğunluğunu yumuşak bir şekilde (SmoothStep) yeni renge geçirir
+    /// </summary>
+    private IEnumerator TransitionLightRoutine(Color targetColor, float targetIntensity, float duration)
+    {
+        Color startColor = Color.white;
+        float startIntensity = 10f;
+
+        foreach (var l in arenaPointLights)
+        {
+            if (l != null)
+            {
+                startColor = l.color;
+                startIntensity = l.intensity;
+                break;
+            }
+        }
+
+        if (startColor == targetColor && Mathf.Approximately(startIntensity, targetIntensity))
+        {
+            yield break;
+        }
+
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.Clamp01(elapsed / duration);
+            float smoothT = Mathf.SmoothStep(0f, 1f, t);
+
+            Color curColor = Color.Lerp(startColor, targetColor, smoothT);
+            float curIntensity = Mathf.Lerp(startIntensity, targetIntensity, smoothT);
+
+            foreach (var l in arenaPointLights)
+            {
+                if (l != null)
+                {
+                    l.color = curColor;
+                    l.intensity = curIntensity;
+                }
+            }
+            yield return null;
+        }
+
+        foreach (var l in arenaPointLights)
+        {
+            if (l != null)
+            {
+                l.color = targetColor;
+                l.intensity = targetIntensity;
+            }
+        }
+
+        lightTransitionCoroutine = null;
     }
 
     void SpawnEnemy(int count)

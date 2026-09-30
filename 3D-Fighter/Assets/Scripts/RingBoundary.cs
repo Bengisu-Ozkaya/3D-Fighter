@@ -27,13 +27,13 @@ public class ArenaEnvironmentConfig
     public float radius = 2.65f;
 
     [Tooltip("Bu sahada oyuncunun doğacağı pozisyon")]
-    public Vector3 playerSpawnPosition = new Vector3(0f, 0f, 2.26f);
+    public Vector3 playerSpawnPosition = new Vector3(0f, 0f, 4.7f);
 
     [Tooltip("Bu sahada oyuncunun başlangıç bakış açısı (Y rotasyonu)")]
     public float playerSpawnRotationY = 180f;
 
     [Tooltip("Bu sahada düşmanların doğacağı merkez pozisyon")]
-    public Vector3 enemySpawnPosition = new Vector3(0f, 0f, 0f);
+    public Vector3 enemySpawnPosition = new Vector3(0f, 0f, 0.5f);
 
     [Tooltip("Bu sahada düşmanların başlangıç bakış açısı (Y rotasyonu)")]
     public float enemySpawnRotationY = 0f;
@@ -172,29 +172,19 @@ public class RingBoundary : MonoBehaviour
                 arenaShape = ArenaShape.OctagonPosts,
                 center = new Vector3(0.27f, 0f, 2.67f),
                 radius = 2.65f,
-                playerSpawnPosition = new Vector3(0f, 0f, 2.26f),
+                playerSpawnPosition = new Vector3(0f, 0f, 4.7f),
                 playerSpawnRotationY = 180f,
-                enemySpawnPosition = new Vector3(0f, 0f, 0f),
+                enemySpawnPosition = new Vector3(0f, 0f, 0.5f),
                 enemySpawnRotationY = 0f,
                 groundY = 0f
             };
             environments.Add(env1);
 
-            // 2. Environment 2 (Dairesel Köy Meydanı)
-            ArenaEnvironmentConfig env2 = new ArenaEnvironmentConfig
+            // Environment 2 geçiş sistemi devre dışı bırakıldı, Environment 2 sahnede varsa kapatılır
+            if (env2Go != null)
             {
-                environmentName = "Environment 2 (Köy Alanı)",
-                environmentObject = env2Go,
-                arenaShape = ArenaShape.Circle,
-                center = new Vector3(2.8f, 0f, -12.5f),
-                radius = 17.5f,
-                playerSpawnPosition = new Vector3(2.8f, 0f, -10.5f),
-                playerSpawnRotationY = 180f,
-                enemySpawnPosition = new Vector3(2.8f, 0f, -14.5f),
-                enemySpawnRotationY = 0f,
-                groundY = 0f
-            };
-            environments.Add(env2);
+                env2Go.SetActive(false);
+            }
         }
         else
         {
@@ -379,12 +369,12 @@ public class RingBoundary : MonoBehaviour
     /// Ortamlar arasında geçiş yapar (Örn: Her 3 dalgada bir 0 -> 1 -> 0 döngüsü).
     /// Objeleri açıp kapatır, oyuncuyu ve spawner'ı yeni sahadaki yerlerine taşır.
     /// </summary>
-    public void SwitchEnvironment(int targetIndex)
+    public void SwitchEnvironment(int targetIndex = 0)
     {
         if (environments == null || environments.Count == 0) return;
 
-        targetIndex = Mathf.Clamp(targetIndex, 0, environments.Count - 1);
-        activeEnvironmentIndex = targetIndex;
+        // Environment 2 geçişi tamamen devre dışı bırakıldı; daima Environment 1 (Index 0) kullanılır
+        activeEnvironmentIndex = 0;
 
         ApplyEnvironmentActiveStates();
         InitializeCurrentArena();
@@ -397,33 +387,11 @@ public class RingBoundary : MonoBehaviour
             RebuildPhysicalColliders();
         }
 
-        // Oyuncuyu yeni sahadaki başlangıç konumuna yerleştir
-        PlayerController player = FindObjectOfType<PlayerController>();
-        if (player != null)
-        {
-            player.TeleportToArena(activeEnv.playerSpawnPosition, Quaternion.Euler(0f, activeEnv.playerSpawnRotationY, 0f), activeEnv.groundY);
-        }
-
-        // Spawner pozisyonunu ve rotasyonunu güncelle
-        EnemySpawner spawner = FindObjectOfType<EnemySpawner>();
-        if (spawner != null)
-        {
-            spawner.transform.position = activeEnv.enemySpawnPosition;
-            spawner.SetSpawnRotation(activeEnv.enemySpawnRotationY);
-        }
-
-        // Kamerayı oyuncunun arkasına sarsıntısız sabitle
-        FollowPlayer cameraFollow = FindObjectOfType<FollowPlayer>();
-        if (cameraFollow != null)
-        {
-            cameraFollow.SnapToTarget();
-        }
-
-        Debug.Log($"<color=cyan>[RingBoundary]</color> Saha başarıyla değiştirildi! Yeni Saha: <color=yellow>{activeEnv.environmentName}</color> | Merkez: {activeEnv.center} | Yarıçap: {activeEnv.radius:F2}m");
+        Debug.Log($"<color=cyan>[RingBoundary]</color> Aktif Saha: <color=yellow>{activeEnv.environmentName}</color> | Merkez: {activeEnv.center} | Yarıçap: {activeEnv.radius:F2}m");
     }
 
     /// <summary>
-    /// Hierarchy'deki Environment GameObject'lerinin aktiflik durumlarını günceller
+    /// Hierarchy'deki Environment GameObject'lerinin aktiflik durumlarını günceller (Environment 1 aktif, Environment 2 daima pasif)
     /// </summary>
     private void ApplyEnvironmentActiveStates()
     {
@@ -433,10 +401,23 @@ public class RingBoundary : MonoBehaviour
         {
             if (environments[i].environmentObject != null)
             {
-                bool shouldBeActive = (i == activeEnvironmentIndex);
+                bool shouldBeActive = (i == 0);
                 if (environments[i].environmentObject.activeSelf != shouldBeActive)
                 {
                     environments[i].environmentObject.SetActive(shouldBeActive);
+                }
+            }
+        }
+
+        // Sahnedeki olası Environment 2 objesini de tamamen pasif tut
+        foreach (var rootGo in UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects())
+        {
+            string trimmed = rootGo.name.Trim();
+            if (trimmed.Equals("Environment 2", StringComparison.OrdinalIgnoreCase) || trimmed.Equals("Environment2", StringComparison.OrdinalIgnoreCase))
+            {
+                if (rootGo.activeSelf)
+                {
+                    rootGo.SetActive(false);
                 }
             }
         }
