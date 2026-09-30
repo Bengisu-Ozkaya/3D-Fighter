@@ -236,6 +236,7 @@ public class PlayerController : MonoBehaviour
         if (!isDead)
         {
             pos = ResolveCollisionWithEnemies(pos);
+            pos = RingBoundary.ClampToArena(pos, playerBodyRadius);
         }
 
         transform.position = pos;
@@ -287,6 +288,7 @@ public class PlayerController : MonoBehaviour
             }
         }
         proposedPos.y = GetCurrentTargetY();
+        proposedPos = RingBoundary.ClampToArena(proposedPos, playerBodyRadius);
         return proposedPos;
     }
 
@@ -338,6 +340,7 @@ public class PlayerController : MonoBehaviour
 
             // Düşmanların içinden geçmeyi engelle ve kenarından yumuşakça kaydır
             targetPos = ResolveCollisionWithEnemies(targetPos);
+            targetPos = RingBoundary.ClampToArena(targetPos, playerBodyRadius);
             transform.position = targetPos;
         }
 
@@ -900,7 +903,9 @@ public class PlayerController : MonoBehaviour
         // Aparkat darbesinde sarsıntı tepkisi / geri itme
         if (isUppercut || damageAmount >= 20f)
         {
-            transform.position += (-transform.forward) * 0.25f;
+            Vector3 pushedPos = transform.position + (-transform.forward) * 0.25f;
+            pushedPos = RingBoundary.ClampToArena(pushedPos, playerBodyRadius);
+            transform.position = pushedPos;
         }
 
         if (playerHealth <= 0)
@@ -1015,11 +1020,42 @@ public class PlayerController : MonoBehaviour
 
         if (uiManager != null)
         {
-            uiManager.ShowGameOverPanel();
+            EnemySpawner spawner = FindObjectOfType<EnemySpawner>();
+            int deadWave = spawner != null ? spawner.CurrentWave : 1;
+            uiManager.ShowGameOverPanel(deadWave);
         }
         else
         {
             Debug.LogWarning("PlayerController: UIManager bulunamadı, GameOver paneli açılamadı!");
+        }
+    }
+
+    /// <summary>
+    /// Environment değiştiğinde oyuncuyu yeni sahadaki spawn noktasına taşır ve zemin yüksekliğini ayarlar
+    /// </summary>
+    public void TeleportToArena(Vector3 targetPos, Quaternion targetRot, float groundY = 0f)
+    {
+        standingYPosition = groundY;
+        fallenYPosition = groundY + 0.45f;
+        standUpYPosition = groundY + 0.45f;
+
+        transform.position = targetPos;
+        transform.rotation = targetRot;
+
+        isPunching = false;
+        isPunchActive = false;
+        isBlocking = false;
+        playerDoBlock = 0;
+        hasHitCurrentPunch = false;
+
+        if (joystick != null)
+        {
+            joystick.ResetJoystick();
+        }
+
+        if (playerAnim != null)
+        {
+            playerAnim.CrossFadeInFixedTime("Idle", 0.1f);
         }
     }
 

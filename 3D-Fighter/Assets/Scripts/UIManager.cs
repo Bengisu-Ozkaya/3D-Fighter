@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 public class UIManager : MonoBehaviour
 {
@@ -149,16 +150,33 @@ public class UIManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Oyuncu öldüğünde Game Over panelini açar
+    /// Oyuncu öldüğünde Game Over panelini açar ve kaçıncı dalgada öldüğünü gösterir
     /// </summary>
-    public void ShowGameOverPanel()
+    public void ShowGameOverPanel(int deadWave = -1)
     {
+        if (deadWave <= 0 && enemySpawner != null)
+        {
+            deadWave = enemySpawner.CurrentWave;
+        }
+
         if (gameOverPanel != null)
         {
+            var tmpTexts = gameOverPanel.GetComponentsInChildren<TextMeshProUGUI>(true);
+            foreach (var t in tmpTexts)
+            {
+                if (t.name.Contains("Text") || t.text.Contains("ÖLDÜN"))
+                {
+                    t.text = $"!!! ÖLDÜN !!!\n<size=70%>{deadWave}. Dalgada Kaybettin</size>";
+                    break;
+                }
+            }
+
             gameOverPanel.SetActive(true);
         }
         if (mobileControlPanel != null) mobileControlPanel.SetActive(false);
     }
+
+    public void ShowGameOverPanel() => ShowGameOverPanel(-1);
 
     /// <summary>
     /// Game Over panelini kapatır

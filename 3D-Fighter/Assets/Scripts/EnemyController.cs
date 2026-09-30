@@ -89,8 +89,12 @@ public class EnemyController : MonoBehaviour
         if (pos.y != targetY)
         {
             pos.y = targetY;
-            transform.position = pos;
         }
+        if (!isDead)
+        {
+            pos = RingBoundary.ClampToArena(pos, bodyRadius);
+        }
+        transform.position = pos;
     }
 
     private bool isDead = false;
@@ -177,6 +181,7 @@ public class EnemyController : MonoBehaviour
                 Vector3 combinedDir = (toPlayer + separationForce).normalized;
                 Vector3 newPos = transform.position + combinedDir * moveSpeed * Time.deltaTime;
                 newPos.y = standingYPosition;
+                newPos = RingBoundary.ClampToArena(newPos, bodyRadius);
                 transform.position = newPos;
             }
         }
@@ -187,7 +192,9 @@ public class EnemyController : MonoBehaviour
             {
                 Vector3 sidePush = separationForce * (moveSpeed * 0.7f) * Time.deltaTime;
                 sidePush.y = 0f;
-                transform.position += sidePush;
+                Vector3 sidePos = transform.position + sidePush;
+                sidePos = RingBoundary.ClampToArena(sidePos, bodyRadius);
+                transform.position = sidePos;
             }
 
             if (Time.time >= nextAttackTime)
@@ -267,6 +274,9 @@ public class EnemyController : MonoBehaviour
                 transform.position += pushDir * overlap;
             }
         }
+
+        // Düşman gövdesini arena sınırları ve köşe direkleri içinde tut
+        transform.position = RingBoundary.ClampToArena(transform.position, bodyRadius);
     }
 
     void AttackPlayer()
@@ -359,7 +369,9 @@ public class EnemyController : MonoBehaviour
         // 20 ve üzeri güçlü darbelerde (Aparkat) ekstra sarsıntı tepkisi ver
         if (isUppercut || damageAmount >= 20f)
         {
-            transform.position += (-transform.forward) * (knockbackDistance * 1.5f);
+            Vector3 pushPos = transform.position + (-transform.forward) * (knockbackDistance * 1.5f);
+            pushPos = RingBoundary.ClampToArena(pushPos, bodyRadius);
+            transform.position = pushPos;
         }
 
         if (health <= 0)
@@ -402,7 +414,9 @@ public class EnemyController : MonoBehaviour
         yield return new WaitForSeconds(0.6f);
 
         // Karakterin geri yönüne (veya Z ekseninde geriye) hafifçe iter
-        transform.position += new Vector3(0, 0, knockbackDistance);
+        Vector3 kbPos = transform.position + new Vector3(0, 0, knockbackDistance);
+        kbPos = RingBoundary.ClampToArena(kbPos, bodyRadius);
+        transform.position = kbPos;
     }
 
     void Die()
@@ -467,7 +481,9 @@ public class EnemyController : MonoBehaviour
     IEnumerator WaitPos()
     {
         yield return new WaitForSeconds(1.2f);
-        transform.position = new Vector3(transform.position.x, fallenYPosition, transform.position.z);
+        Vector3 fallPos = new Vector3(transform.position.x, fallenYPosition, transform.position.z);
+        fallPos = RingBoundary.ClampToArena(fallPos, bodyRadius);
+        transform.position = fallPos;
     }
 
     IEnumerator WaitPunch()

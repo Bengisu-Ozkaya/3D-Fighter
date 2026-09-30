@@ -109,4 +109,35 @@ public class AnimationFixer
 
         EditorUtility.SetDirty(controller);
     }
+
+    [MenuItem("Tools/3D Fighter/Saha ve Direk Sinirlarini Olustur (RingBoundary)")]
+    public static void SetupRingBoundaryInScene()
+    {
+        RingBoundary existing = Object.FindObjectOfType<RingBoundary>();
+        if (existing == null)
+        {
+            GameObject go = new GameObject("RingBoundary");
+            existing = go.AddComponent<RingBoundary>();
+            Undo.RegisterCreatedObjectUndo(go, "Create RingBoundary");
+        }
+        existing.InitializeArena();
+        UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene());
+        Debug.Log("<color=green>[3D Fighter]</color> RingBoundary (Saha ve Direk Sınır Sistemi) sahneye başarıyla eklendi ve ayarlandı!");
+    }
+
+    [MenuItem("Tools/3D Fighter/Saha ve Cevreleri Yapilandir (Environment 1 ve 2)")]
+    public static void SetupEnvironmentsInScene()
+    {
+        RingBoundary existing = Object.FindObjectOfType<RingBoundary>();
+        if (existing == null)
+        {
+            GameObject go = new GameObject("RingBoundary");
+            existing = go.AddComponent<RingBoundary>();
+            Undo.RegisterCreatedObjectUndo(go, "Create RingBoundary");
+        }
+        existing.AutoSetupEnvironmentsIfNeeded();
+        existing.SwitchEnvironment(0);
+        UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene());
+        Debug.Log("<color=green>[3D Fighter]</color> Environment 1 ve Environment 2 sahaları, dairesel sınırları ve spawn noktaları başarıyla yapılandırıldı!");
+    }
 }

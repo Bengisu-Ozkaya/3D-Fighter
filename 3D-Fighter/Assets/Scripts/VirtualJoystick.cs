@@ -30,8 +30,20 @@ public class VirtualJoystick : MonoBehaviour, IPointerDownHandler, IDragHandler,
     [Tooltip("Parmağı bıraktığınızda kolun merkeze yumuşak dönüş hızı.")]
     [SerializeField] private float snapSpeed = 20f;
 
+    [Header("Arka Plan Renk Ayarları (Görsel Geri Bildirim)")]
+    [Tooltip("Joystick hareketsizken / basılmadığında arka planın varsayılan rengi.")]
+    [SerializeField] private Color normalColor = new Color(0.79f, 0.79f, 0.79f, 0.47f);
+
+    [Tooltip("Joystick sürüklenmeye başlandığında arka planın alacağı daha koyu renk.")]
+    [SerializeField] private Color activeColor = new Color(0.7f, 0.7f, 0.7f, 0.47f);
+
+    [Tooltip("Renkler arasındaki geçiş yumuşaklığı (0 ise anında değişir).")]
+    [SerializeField] private float colorTransitionSpeed = 12f;
+
     private Vector2 inputVector = Vector2.zero;
     private Canvas parentCanvas;
+    private Image backgroundImage;
+    private Color targetColor;
     private bool isDragging = false;
 
     /// <summary>
@@ -109,6 +121,20 @@ public class VirtualJoystick : MonoBehaviour, IPointerDownHandler, IDragHandler,
             float handleSize = (handle != null) ? Mathf.Min(handle.rect.width, handle.rect.height) : (bgSize * 0.33f);
             movementRange = Mathf.Max(20f, (bgSize - handleSize) * 0.5f);
         }
+
+        // 3. Arka plan Image bileşeni ve başlangıç rengi
+        if (background != null)
+        {
+            backgroundImage = background.GetComponent<Image>();
+            if (backgroundImage != null)
+            {
+                if (normalColor.a <= 0.01f)
+                {
+                    normalColor = backgroundImage.color;
+                }
+                targetColor = normalColor;
+            }
+        }
     }
 
     /// <summary>
@@ -140,6 +166,7 @@ public class VirtualJoystick : MonoBehaviour, IPointerDownHandler, IDragHandler,
     public void OnPointerDown(PointerEventData eventData)
     {
         isDragging = true;
+        targetColor = activeColor;
         OnDrag(eventData);
     }
 
@@ -178,6 +205,7 @@ public class VirtualJoystick : MonoBehaviour, IPointerDownHandler, IDragHandler,
     {
         isDragging = false;
         inputVector = Vector2.zero;
+        targetColor = normalColor;
 
         if (snapSpeed <= 0f && handle != null)
         {
@@ -187,7 +215,20 @@ public class VirtualJoystick : MonoBehaviour, IPointerDownHandler, IDragHandler,
 
     void Update()
     {
-        // Parmak kaldırıldığında kolun merkeze yumuşakça dönmesi
+        // 1. Arka plan rengini yumuşakça hedef renge geçir
+        if (backgroundImage != null)
+        {
+            if (colorTransitionSpeed > 0f)
+            {
+                backgroundImage.color = Color.Lerp(backgroundImage.color, targetColor, Time.deltaTime * colorTransitionSpeed);
+            }
+            else
+            {
+                backgroundImage.color = targetColor;
+            }
+        }
+
+        // 2. Parmak kaldırıldığında kolun merkeze yumuşakça dönmesi
         if (!isDragging && handle != null && handle.anchoredPosition != Vector2.zero)
         {
             if (snapSpeed > 0f)
@@ -209,6 +250,11 @@ public class VirtualJoystick : MonoBehaviour, IPointerDownHandler, IDragHandler,
     {
         isDragging = false;
         inputVector = Vector2.zero;
+        targetColor = normalColor;
+        if (backgroundImage != null)
+        {
+            backgroundImage.color = normalColor;
+        }
         if (handle != null)
         {
             handle.anchoredPosition = Vector2.zero;

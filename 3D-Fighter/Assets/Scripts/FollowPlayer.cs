@@ -251,4 +251,25 @@ public class FollowPlayer : MonoBehaviour
         playerHipsBone = null;
         CachePlayerComponents();
     }
+
+    /// <summary>
+    /// Environment değiştiğinde veya karakter ışınlandığında kamerayı anında hedefin arkasına kilitler (ekran kaymasını/lag'ini önler)
+    /// </summary>
+    public void SnapToTarget()
+    {
+        FindTargetIfNeeded();
+        if (target != null)
+        {
+            fixedGroundY = target.position.y;
+            currentVelocity = Vector3.zero;
+            currentYawVelocity = 0f;
+            currentYaw = transform.eulerAngles.y;
+
+            transform.position = CalculateDesiredPosition(target.position);
+            if (useFixedAngle)
+            {
+                transform.rotation = Quaternion.Euler(fixedPitchAngle, fixedYawAngle, 0f);
+            }
+        }
+    }
 }

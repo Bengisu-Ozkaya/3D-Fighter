@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+
 public enum Difficulty
 {
     Easy,
@@ -14,12 +15,14 @@ public class EnemySpawner : MonoBehaviour
     [SerializeField] GameObject enemyPrefab;
     [Tooltip("Önceki dalgadaki tüm düşmanlar yok olduktan (Destroy edildikten) sonra yeni dalganın başlama gecikmesi (saniye)")]
     [SerializeField] float respawnDelay = 1.0f;
-    [Tooltip("Maksimum dalga sayısı. Bu dalgadaki düşmanlar bittiğinde oyun durur (Örn: 3. dalgadan sonra)")]
-    [SerializeField] int maxWaves = 3;
     [Tooltip("Birden fazla düşman doğduğunda aralarındaki yatay mesafe")]
     [SerializeField] float spawnSpacing = 1.4f;
     [Tooltip("Düşmanların doğarken sahip olacağı rotasyon açısı (Y ekseni derece, Varsayılan 0)")]
     [SerializeField] float spawnRotationY = 0f;
+    [Tooltip("Sonsuz dalgalarda bir dalgada aynı anda doğabilecek maksimum düşman sayısı")]
+    [SerializeField] int maxEnemiesPerWave = 8;
+    [Tooltip("Environment (Saha) değiştirilirken araya giren bekleme süresi (saniye)")]
+    [SerializeField] float environmentTransitionDelay = 1.2f;
 
     [Header("Zorluk Hasar Ayarları (Enemy Attack Damage)")]
     [Tooltip("Kolay modda düşmanların oyuncuya vereceği hasar")]
@@ -53,24 +56,25 @@ public class EnemySpawner : MonoBehaviour
     [Tooltip("Zor modda oyuncunun aparkat hasarı (İstenen: 30)")]
     [SerializeField] float hardPlayerUppercutDamage = 30f;
 
-    // Zorluk Modlarına Göre Dalga Düşman Sayıları
-    private readonly int[] easyWaveCounts = new int[] { 1, 2, 3 };
-    private readonly int[] midWaveCounts = new int[] { 1, 3, 5 };
-    private readonly int[] hardWaveCounts = new int[] { 1, 3, 5 };
+    // Zorluk Modlarına Göre Temel Dalga Düşman Sayıları
+    private readonly int[] easyWaveCounts = new int[] { 1, 2, 3, 4, 5, 6 };
+    private readonly int[] midWaveCounts = new int[] { 1, 2, 3, 4, 5 };
+    private readonly int[] hardWaveCounts = new int[] { 1, 2, 3, 4, 5 };
 
     private int[] currentWaveCounts = new int[] { 1, 2, 3 };
     private Difficulty currentDifficulty = Difficulty.Easy;
 
     private int wave = 1;
+    private int currentEnvironmentIndex = 0;
     private List<EnemyController> activeEnemies = new List<EnemyController>();
     private bool isGameStarted = false;
     private bool isSpawning = false;
-    private bool isWavesCompleted = false;
+    private bool isChangingEnvironment = false;
 
     public int CurrentWave => wave;
-    public bool IsWavesCompleted => isWavesCompleted;
     public bool IsGameStarted => isGameStarted;
     public Difficulty CurrentDifficulty => currentDifficulty;
+    public int CurrentEnvironmentIndex => currentEnvironmentIndex;
 
     /// <summary>
     /// Aktif zorluk derecesine göre düşmanın vereceği hasar miktarını döner
@@ -98,11 +102,11 @@ public class EnemySpawner : MonoBehaviour
         switch (currentDifficulty)
         {
             case Difficulty.Easy:
-                return 30f; // Kolay mod: Düşman Canı 30
+                return easyEnemyHealth;
             case Difficulty.Medium:
-                return 40f; // Orta mod: Düşman Canı 40
+                return midEnemyHealth;
             case Difficulty.Hard:
-                return 50f; // Zor mod: Düşman Canı 50
+                return hardEnemyHealth;
             default:
                 return 30f;
         }
@@ -116,11 +120,11 @@ public class EnemySpawner : MonoBehaviour
         switch (currentDifficulty)
         {
             case Difficulty.Easy:
-                return 10f; // Kolay mod: Normal yumruk 10 hasar (30'dan 20'ye iner)
+                return easyPlayerDamage;
             case Difficulty.Medium:
-                return 10f; // Orta mod: Normal yumruk 10 hasar (40'tan 30'a iner)
+                return midPlayerDamage;
             case Difficulty.Hard:
-                return 20f; // Zor mod: Normal yumruk 20 hasar (50'den 20 götürür)
+                return hardPlayerDamage;
             default:
                 return 10f;
         }
@@ -134,47 +138,68 @@ public class EnemySpawner : MonoBehaviour
         switch (currentDifficulty)
         {
             case Difficulty.Easy:
-                return 20f; // Kolay mod: Aparkat 20 hasar (30'dan 10'a iner)
+                return easyPlayerUppercutDamage;
             case Difficulty.Medium:
-                return 20f; // Orta mod: Aparkat 20 hasar (40'tan 20'ye iner)
+                return midPlayerUppercutDamage;
             case Difficulty.Hard:
-                return 30f; // Zor mod: Aparkat 30 hasar (50'den 30 götürür)
+                return hardPlayerUppercutDamage;
             default:
                 return 20f;
         }
     }
 
-    void Start()
+    /// <summary>
+    /// Her 3 dalgada bir ortamın (Environment) değişmesi için hangi indeksin aktif olacağını hesaplar
+    /// 1, 2, 3 -> Environment 1 (Index 0)
+    /// 4, 5, 6 -> Environment 2 (Index 1)
+    /// 7, 8, 9 -> Environment 1 (veya ileride 3)
+    /// </summary>
+    public int GetEnvironmentIndexForWave(int waveNumber)
     {
-        // UI butonuna basılana kadar oyun beklemede kalır
+        int envCount = RingBoundary.Instance != null ? RingBoundary.Instance.EnvironmentCount : 2;
+        if (envCount <= 0) envCount = 2;
+        return ((waveNumber - 1) / 3) % envCount;
     }
 
     /// <summary>
-    /// Kolay Modu başlatır (1. Dalga: 1, 2. Dalga: 2, 3. Dalga: 3 Düşman)
+    /// Mevcut dalga numarasına göre sahada doğacak düşman sayısını hesaplar
     /// </summary>
+    public int GetEnemyCountForWave(int waveNumber)
+    {
+        if (currentWaveCounts != null && waveNumber - 1 < currentWaveCounts.Length)
+        {
+            return currentWaveCounts[waveNumber - 1];
+        }
+
+        int baseCount = (currentWaveCounts != null && currentWaveCounts.Length > 0)
+            ? currentWaveCounts[currentWaveCounts.Length - 1]
+            : 3;
+        int extra = (waveNumber - (currentWaveCounts != null ? currentWaveCounts.Length : 3));
+        return Mathf.Clamp(baseCount + extra, 1, maxEnemiesPerWave);
+    }
+
+    public void SetSpawnRotation(float rotY)
+    {
+        spawnRotationY = rotY;
+    }
+
     public void StartEasyMode()
     {
         StartGame(Difficulty.Easy);
     }
 
-    /// <summary>
-    /// Orta Modu başlatır (1. Dalga: 3, 2. Dalga: 5, 3. Dalga: 7 Düşman)
-    /// </summary>
     public void StartMidMode()
     {
         StartGame(Difficulty.Medium);
     }
 
-    /// <summary>
-    /// Zor Modu başlatır (1. Dalga: 5, 2. Dalga: 7, 3. Dalga: 10 Düşman)
-    /// </summary>
     public void StartHardMode()
     {
         StartGame(Difficulty.Hard);
     }
 
     /// <summary>
-    /// Seçilen zorluk derecesiyle oyunu ve ilk dalgayı başlatır
+    /// Seçilen zorluk derecesiyle oyunu ve ilk dalgayı başlatır (Sonsuz mod)
     /// </summary>
     public void StartGame(Difficulty difficulty)
     {
@@ -195,16 +220,22 @@ public class EnemySpawner : MonoBehaviour
                 break;
         }
 
-        maxWaves = currentWaveCounts.Length;
         wave = 1;
-        isWavesCompleted = false;
+        currentEnvironmentIndex = 0;
         isGameStarted = true;
+        isChangingEnvironment = false;
+
+        // Başlangıçta 1. sahayı (Environment 1) aktif et
+        if (RingBoundary.Instance != null)
+        {
+            RingBoundary.Instance.SwitchEnvironment(0);
+        }
 
         float dmg = GetCurrentDifficultyDamage();
         float hp = GetCurrentDifficultyEnemyHealth();
         float playerDmg = GetCurrentDifficultyPlayerDamage();
         float playerUppercutDmg = GetCurrentDifficultyPlayerUppercutDamage();
-        Debug.Log($"<color=cyan>[OYUN BAŞLADI]</color> Mod: {difficulty} | Toplam Dalga: {maxWaves} | Düşman Canı: {hp} | Düşman Hasarı: {dmg} | Oyuncu Yumruk Hasarı: {playerDmg} | Aparkat Hasarı: {playerUppercutDmg}");
+        Debug.Log($"<color=cyan>[SONSUZ DALGA OYUNU BAŞLADI]</color> Mod: {difficulty} | Düşman Canı: {hp} | Düşman Hasarı: {dmg} | Oyuncu Yumruk: {playerDmg} | Aparkat: {playerUppercutDmg}");
 
         // Sahnedeki mevcut düşmanların hasarını ve canını güncelle
         foreach (var ec in FindObjectsOfType<EnemyController>())
@@ -216,7 +247,7 @@ public class EnemySpawner : MonoBehaviour
             }
         }
 
-        // Oyuncunun yumruk ve aparkat hasarını zorluk moduna göre güncelle
+        // Oyuncunun yumruk ve aparkat hasarını güncelle
         PlayerController player = FindObjectOfType<PlayerController>();
         if (player != null)
         {
@@ -230,13 +261,13 @@ public class EnemySpawner : MonoBehaviour
 
     void Update()
     {
-        // Oyun başlamadıysa veya dalgalar tamamlandıysa bekle
-        if (!isGameStarted || isWavesCompleted) return;
+        // Oyun başlamadıysa veya ortam değişiyorsa bekle
+        if (!isGameStarted || isChangingEnvironment) return;
 
-        // Sahneden tamamen yok olan (Destroy edilen) düşmanları listeden temizle
+        // Sahneden yok olan düşmanları listeden temizle
         activeEnemies.RemoveAll(e => e == null);
 
-        // Sahnedeki tüm düşmanları kontrol et (Önceki dalgadan yerde yatan veya henüz yok olmamış herhangi bir düşman var mı?)
+        // Sahnedeki tüm düşmanları kontrol et
         bool anyEnemyInScene = false;
         EnemyController[] allEnemiesInScene = FindObjectsOfType<EnemyController>();
         if (allEnemiesInScene != null && allEnemiesInScene.Length > 0)
@@ -244,43 +275,12 @@ public class EnemySpawner : MonoBehaviour
             anyEnemyInScene = true;
         }
 
-        // Sahnede önceki dalgadan HİÇBİR düşman kalmadıysa (hepsi nakavt olup destroy edildiyse) ve yeni dalga henüz başlatılmadıysa
+        // Sahnede önceki dalgadan HİÇBİR düşman kalmadıysa ve yeni dalga henüz başlatılmadıysa
         if (activeEnemies.Count == 0 && !anyEnemyInScene && !isSpawning)
         {
-            // Belirlenen maksimum dalgaya ulaşıldı ve o dalgadaki tüm düşmanlar yenilip yok olduysa
-            if (wave >= maxWaves)
-            {
-                StartCoroutine(WavesCompletedRoutine());
-                return;
-            }
-
-            // Bir sonraki dalgaya geç (1 -> 2, 2 -> 3 gibi)
+            // Dalgalar kullanıcı ölene kadar sonsuz olarak artar (1, 2, 3, 4, 5...)
             wave++;
             StartCoroutine(SpawnEnemyRoutine(wave, false));
-        }
-    }
-
-    IEnumerator WavesCompletedRoutine()
-    {
-        isWavesCompleted = true;
-        Debug.Log($"<color=green>[TEBRİKLER!]</color> {currentDifficulty} modunda tüm dalgalar tamamlandı!");
-
-        // 1. Oyuncunun Show Pose zafer animasyonunun baştan sona oynayıp bitmesini bekle
-        PlayerController player = FindObjectOfType<PlayerController>();
-        if (player != null)
-        {
-            yield return StartCoroutine(player.PlayVictoryShowPoseRoutine());
-        }
-        else
-        {
-            yield return new WaitForSeconds(6.3f);
-        }
-
-        // 2. Animasyon tamamen bittikten sonra Victory Panelini aç
-        UIManager uiManager = FindObjectOfType<UIManager>();
-        if (uiManager != null)
-        {
-            uiManager.ShowVictoryPanel();
         }
     }
 
@@ -293,8 +293,16 @@ public class EnemySpawner : MonoBehaviour
         ClearAllEnemies();
 
         isGameStarted = true;
-        isWavesCompleted = false;
         isSpawning = false;
+        isChangingEnvironment = false;
+
+        // Öldüğü dalganın ortamına uygun sahayı aktif et
+        int targetEnvIndex = GetEnvironmentIndexForWave(wave);
+        if (RingBoundary.Instance != null)
+        {
+            RingBoundary.Instance.SwitchEnvironment(targetEnvIndex);
+        }
+        currentEnvironmentIndex = targetEnvIndex;
 
         PlayerController player = FindObjectOfType<PlayerController>();
         if (player != null)
@@ -303,12 +311,12 @@ public class EnemySpawner : MonoBehaviour
             player.SetUppercutDamage(GetCurrentDifficultyPlayerUppercutDamage());
         }
 
-        Debug.Log($"<color=cyan>[ÖLÜNEN DALGA YENİDEN BAŞLATILIYOR]</color> Dalga {wave}/{maxWaves} - Mod: {currentDifficulty}");
+        Debug.Log($"<color=cyan>[ÖLÜNEN DALGA YENİDEN BAŞLATILIYOR]</color> Dalga {wave} - Saha: #{currentEnvironmentIndex + 1} - Mod: {currentDifficulty}");
         StartCoroutine(SpawnEnemyRoutine(wave, true));
     }
 
     /// <summary>
-    /// Aynı zorluk derecesiyle oyunu 1. dalgadan yeniden başlatır
+    /// Oyunu 1. dalgadan ve Environment 1'den yeniden başlatır
     /// </summary>
     public void RestartGame()
     {
@@ -316,9 +324,15 @@ public class EnemySpawner : MonoBehaviour
         ClearAllEnemies();
 
         isGameStarted = true;
-        isWavesCompleted = false;
         isSpawning = false;
+        isChangingEnvironment = false;
         wave = 1;
+        currentEnvironmentIndex = 0;
+
+        if (RingBoundary.Instance != null)
+        {
+            RingBoundary.Instance.SwitchEnvironment(0);
+        }
 
         PlayerController player = FindObjectOfType<PlayerController>();
         if (player != null)
@@ -327,12 +341,12 @@ public class EnemySpawner : MonoBehaviour
             player.SetUppercutDamage(GetCurrentDifficultyPlayerUppercutDamage());
         }
 
-        Debug.Log($"<color=cyan>[YENİDEN BAŞLATILDI]</color> Mod: {currentDifficulty}");
+        Debug.Log($"<color=cyan>[OYUN YENİDEN BAŞLATILDI]</color> Mod: {currentDifficulty} - Saha: #1");
         StartCoroutine(SpawnEnemyRoutine(wave, true));
     }
 
     /// <summary>
-    /// Spawner'ı tamamen durdurur ve sıfırlar (Ana Menüye dönüş için)
+    /// Spawner'ı durdurur ve ana menü durumuna sıfırlar
     /// </summary>
     public void ResetSpawner()
     {
@@ -340,9 +354,15 @@ public class EnemySpawner : MonoBehaviour
         ClearAllEnemies();
 
         isGameStarted = false;
-        isWavesCompleted = false;
         isSpawning = false;
+        isChangingEnvironment = false;
         wave = 1;
+        currentEnvironmentIndex = 0;
+
+        if (RingBoundary.Instance != null)
+        {
+            RingBoundary.Instance.SwitchEnvironment(0);
+        }
 
         PlayerController player = FindObjectOfType<PlayerController>();
         if (player != null)
@@ -353,7 +373,7 @@ public class EnemySpawner : MonoBehaviour
     }
 
     /// <summary>
-    /// Sahnedeki tüm aktif veya ölü düşman nesnelerini temizler
+    /// Sahnedeki tüm düşman nesnelerini temizler
     /// </summary>
     public void ClearAllEnemies()
     {
@@ -380,13 +400,15 @@ public class EnemySpawner : MonoBehaviour
     {
         isSpawning = true;
 
-        int enemyCount = 1;
-        if (currentWaveCounts != null && currentWave - 1 < currentWaveCounts.Length)
+        // Her 3 dalga tamamlandığında (Örn: Dalga 4, 7, 10...) Environment değiştir
+        int targetEnvIndex = GetEnvironmentIndexForWave(currentWave);
+        if (targetEnvIndex != currentEnvironmentIndex)
         {
-            enemyCount = currentWaveCounts[currentWave - 1];
+            yield return StartCoroutine(ChangeEnvironmentRoutine(targetEnvIndex, currentWave));
         }
 
-        Debug.Log($"<color=yellow>[YENİ DALGA GELİYOR]</color> Dalga {currentWave}/{maxWaves} ({enemyCount} Düşman) - Zorluk: {currentDifficulty}");
+        int enemyCount = GetEnemyCountForWave(currentWave);
+        Debug.Log($"<color=yellow>[YENİ DALGA GELİYOR]</color> Dalga {currentWave} ({enemyCount} Düşman) - Saha: #{currentEnvironmentIndex + 1} - Zorluk: {currentDifficulty}");
 
         if (!isFirst)
         {
@@ -401,6 +423,27 @@ public class EnemySpawner : MonoBehaviour
         isSpawning = false;
     }
 
+    /// <summary>
+    /// Her 3 dalgada bir çağrılır: Sahayı, collider'ları, oyuncuyu ve spawner'ı yeni çevreye taşır
+    /// </summary>
+    IEnumerator ChangeEnvironmentRoutine(int targetEnvIndex, int targetWave)
+    {
+        isChangingEnvironment = true;
+        Debug.Log($"<color=cyan>[ENVIRONMENT DEĞİŞİYOR]</color> 3 Dalga atlatıldı! Yeni Sahaya Geçiliyor: Saha #{targetEnvIndex + 1} (Dalga {targetWave})");
+
+        ClearAllEnemies();
+
+        if (RingBoundary.Instance != null)
+        {
+            RingBoundary.Instance.SwitchEnvironment(targetEnvIndex);
+        }
+        currentEnvironmentIndex = targetEnvIndex;
+
+        // Yeni ortama geçiş anında oyuncunun hazır olması için kısa bir geçiş beklemesi
+        yield return new WaitForSeconds(environmentTransitionDelay);
+        isChangingEnvironment = false;
+    }
+
     void SpawnEnemy(int count)
     {
         if (enemyPrefab != null)
@@ -412,6 +455,7 @@ public class EnemySpawner : MonoBehaviour
                 // Düşmanların üst üste binmemesi için X ekseninde aralıklı yerleştir
                 float xOffset = (count > 1) ? (i - (count - 1) * 0.5f) * spawnSpacing : 0f;
                 Vector3 spawnPos = transform.position + new Vector3(xOffset, 0f, 0f);
+                spawnPos = RingBoundary.ClampToArena(spawnPos, 0.45f);
 
                 Quaternion spawnRot = Quaternion.Euler(0f, spawnRotationY, 0f);
                 GameObject newEnemy = Instantiate(enemyPrefab, spawnPos, spawnRot);
