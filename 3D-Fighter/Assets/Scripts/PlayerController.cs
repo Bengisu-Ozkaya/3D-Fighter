@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using UnityEngine.UI;
 using UnityEngine;
 
 public class PlayerController : MonoBehaviour
@@ -86,11 +87,9 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private UIManager uiManager;
     [Header("Mobil Kontroller")]
     [SerializeField] private VirtualJoystick joystick;
-
     private int playerDoBlock;
-
     bool usingUlti = false;
-
+    [SerializeField] Image playerHealthBar;
     void Start()
     {
         startPosition = new Vector3(transform.position.x, standingYPosition, transform.position.z);
@@ -926,6 +925,10 @@ public class PlayerController : MonoBehaviour
 
         StartCoroutine(WaitPunch());
         playerHealth -= damageAmount;
+
+        //Can Barı
+        playerHealthBar.fillAmount = playerHealth / maxPlayerHealth;
+
         Debug.Log($"<color=cyan>[OYUNCU DARBE ALDI]</color> Kalan Can: {playerHealth} (Aparkat: {isUppercut})");
 
         // Aparkat darbesinde sarsıntı tepkisi / geri itme
@@ -1126,6 +1129,9 @@ public class PlayerController : MonoBehaviour
 
         // Canı tamamen yenile
         playerHealth = maxPlayerHealth;
+
+        // Can Barını doldur
+        playerHealthBar.fillAmount = playerHealth/maxPlayerHealth;
 
         // Kip Up animasyonunu oynat
         string getUpAnim = (playerAnim != null && playerAnim.HasState(0, Animator.StringToHash("Kip Up"))) ? "Kip Up" : "Stand Up";

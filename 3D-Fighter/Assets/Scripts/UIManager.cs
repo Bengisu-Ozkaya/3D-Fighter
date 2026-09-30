@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using System.Diagnostics;
 
 public class UIManager : MonoBehaviour
 {
@@ -11,6 +12,7 @@ public class UIManager : MonoBehaviour
     [SerializeField] GameObject victoryPanel;
     [SerializeField] GameObject gameOverPanel;
     [SerializeField] GameObject mobileControlPanel;
+    [SerializeField] GameObject healtBarPanel;
 
     [Header("Referanslar")]
     [SerializeField] EnemySpawner enemySpawner;
@@ -54,6 +56,7 @@ public class UIManager : MonoBehaviour
         if (startPanel != null) startPanel.SetActive(true);
         if (victoryPanel != null) victoryPanel.SetActive(false);
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
+        if(healtBarPanel != null) healtBarPanel.SetActive(false);
         if (mobileControlPanel != null)
         {
             mobileControlPanel.SetActive(startPanel == null || !startPanel.activeSelf);
@@ -105,6 +108,7 @@ public class UIManager : MonoBehaviour
         if (startPanel != null) startPanel.SetActive(false);
         if (victoryPanel != null) victoryPanel.SetActive(false);
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
+        if(healtBarPanel != null) healtBarPanel.SetActive(true);
         if (mobileControlPanel != null) mobileControlPanel.SetActive(true);
         if (enemySpawner != null)
         {
@@ -117,6 +121,7 @@ public class UIManager : MonoBehaviour
         if (startPanel != null) startPanel.SetActive(false);
         if (victoryPanel != null) victoryPanel.SetActive(false);
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
+        if(healtBarPanel != null) healtBarPanel.SetActive(true);
         if (mobileControlPanel != null) mobileControlPanel.SetActive(true);
         if (enemySpawner != null)
         {
@@ -129,6 +134,7 @@ public class UIManager : MonoBehaviour
         if (startPanel != null) startPanel.SetActive(false);
         if (victoryPanel != null) victoryPanel.SetActive(false);
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
+        if(healtBarPanel != null) healtBarPanel.SetActive(true);
         if (mobileControlPanel != null) mobileControlPanel.SetActive(true);
         if (enemySpawner != null)
         {
@@ -143,6 +149,7 @@ public class UIManager : MonoBehaviour
     {
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
         if (mobileControlPanel != null) mobileControlPanel.SetActive(false);
+        if(healtBarPanel != null) healtBarPanel.SetActive(false);
         if (victoryPanel != null)
         {
             victoryPanel.SetActive(true);
