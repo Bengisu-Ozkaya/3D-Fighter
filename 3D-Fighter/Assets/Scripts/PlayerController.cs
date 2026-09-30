@@ -88,7 +88,16 @@ public class PlayerController : MonoBehaviour
     [Header("Mobil Kontroller")]
     [SerializeField] private VirtualJoystick joystick;
     private int playerDoBlock;
+
+    [Header("Ulti Yeteneği ('R' Tuşu)")]
     public bool usingUlti = true;
+    [Tooltip("Ulti vuruşunun vereceği hasar")]
+    [SerializeField] private float ultiDamage = 50f;
+    [Tooltip("Ulti yeteneğinin tekrar dolma süresi (Cooldown - saniye)")]
+    [SerializeField] private float ultiCooldown = 6f;
+    [Tooltip("Ulti vuruşunun etki alanı yarıçapı")]
+    [SerializeField] private float ultiRange = 2.0f;
+
     [SerializeField] Image playerHealthBar;
 
     void Awake()
@@ -215,9 +224,8 @@ public class PlayerController : MonoBehaviour
 
         if (Input.GetKeyDown(KeyCode.R))
         {
-            if (!usingUlti)
+            if (!usingUlti && !isPunching && !isBlocking && !isDead && !isGameCompleted && !isStandingUp)
             {
-                Debug.Log("GÖKTE NE VAR?");
                 ExecuteUlti();
             }
         }
@@ -474,18 +482,111 @@ public class PlayerController : MonoBehaviour
 
     void ExecuteUlti()
     {
-        if (usingUlti) return;
+        if (usingUlti || isPunching || isBlocking || isDead || isGameCompleted || isStandingUp) return;
         usingUlti = true;
-        Debug.Log("YUMRUUUKKK");
+        isPunching = true;
+        hasHitCurrentPunch = false;
 
+        Debug.Log("<color=magenta>[ULTİ DEVREYE GİRDİ!]</color> Oyuncu Ulti animasyonunu başlattı!");
+
+        FaceOpponentOnPunch();
+
+        if (playerAnim != null)
+        {
+            playerAnim.CrossFadeInFixedTime("Ulti", 0.15f);
+        }
+
+        StartCoroutine(UltiRoutine());
+    }
+
+    IEnumerator UltiRoutine()
+    {
+        // 1. Öne doğru hamle
+        float stepDuration = 0.20f;
+        if (punchStepDistance > 0f)
+        {
+            float stepTimer = 0f;
+            Vector3 startPos = new Vector3(transform.position.x, standingYPosition, transform.position.z);
+            Vector3 fwd = transform.forward;
+            fwd.y = 0f;
+            Vector3 stepTarget = startPos + fwd.normalized * (punchStepDistance * 1.5f);
+            stepTarget.y = standingYPosition;
+            while (stepTimer < stepDuration)
+            {
+                stepTimer += Time.deltaTime;
+                float t = Mathf.Clamp01(stepTimer / stepDuration);
+                float smoothT = Mathf.SmoothStep(0f, 1f, t);
+                Vector3 newPos = Vector3.Lerp(startPos, stepTarget, smoothT);
+                newPos.y = standingYPosition;
+                newPos = ResolveCollisionWithEnemies(newPos);
+                transform.position = newPos;
+                yield return null;
+            }
+        }
+
+        // 2. Vuruşun temas anına kadar bekleme süresi (~0.7 saniye)
+        yield return new WaitForSeconds(0.7f);
+
+        // 3. Vuruş anı penceresi (~1.0 saniye boyunca temas ara)
+        float hitWindow = 1.0f;
+        float hitTimer = 0f;
+        bool hasDealtUltiDamage = false;
+
+        while (hitTimer < hitWindow)
+        {
+            if (!hasDealtUltiDamage)
+            {
+                hasDealtUltiDamage = CheckUltiContact();
+            }
+            hitTimer += Time.deltaTime;
+            yield return null;
+        }
+
+        // 4. Kalan animasyon süresini bekle (~1.2 saniye)
+        yield return new WaitForSeconds(1.2f);
+
+        if (playerAnim != null && !isDead && !isGameCompleted)
+        {
+            playerAnim.CrossFadeInFixedTime("Idle", 0.2f);
+        }
+
+        isPunching = false;
+
+        // 5. Cooldown süresini başlat
         StartCoroutine(WaitForUlti());
+    }
+
+    bool CheckUltiContact()
+    {
+        bool hitAny = false;
+        EnemyController[] allEnemies = FindObjectsOfType<EnemyController>();
+
+        foreach (var enemy in allEnemies)
+        {
+            if (enemy == null || enemy.IsDead) continue;
+
+            float dist = Vector3.Distance(transform.position, enemy.transform.position);
+            if (dist <= ultiRange)
+            {
+                Vector3 dir = (enemy.transform.position - transform.position).normalized;
+                dir.y = 0f;
+                if (Vector3.Dot(transform.forward, dir) >= 0.1f)
+                {
+                    enemy.TakeDamage(ultiDamage, true); // 50 hasar, gard kırma ve sarsıntı!
+                    Debug.Log($"<color=magenta>[ULTİ İSABET ETTİ!]</color> {enemy.name} düşmanına {ultiDamage} hasar verildi!");
+                    enemyController = enemy;
+                    hitAny = true;
+                }
+            }
+        }
+        return hitAny;
     }
 
     IEnumerator WaitForUlti()
     {
-        yield return new WaitForSeconds(5f);
+        yield return new WaitForSeconds(ultiCooldown);
         usingUlti = false;
-        Debug.Log("Ulti tekrar hazır!");
+        Debug.Log("<color=green>[ULTİ TEKRAR HAZIR!]</color>");
     }
 
     IEnumerator UppercutRoutine()
@@ -923,10 +1024,14 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        isPunching = false;
-        isPunchActive = false;
-        StopCoroutine(nameof(PunchRoutine));
-        StopCoroutine(nameof(UppercutRoutine));
+        bool isCastingUlti = isPunching && playerAnim != null && playerAnim.GetCurrentAnimatorStateInfo(0).IsName("Ulti");
+        if (!isCastingUlti)
+        {
+            isPunching = false;
+            isPunchActive = false;
+            StopCoroutine(nameof(PunchRoutine));
+            StopCoroutine(nameof(UppercutRoutine));
+        }
 
         StartCoroutine(WaitPunch());
         playerHealth -= damageAmount;
@@ -979,6 +1084,7 @@ public class PlayerController : MonoBehaviour
         playerDoBlock = 0;
         StopCoroutine(nameof(PunchRoutine));
         StopCoroutine(nameof(UppercutRoutine));
+        StopCoroutine(nameof(UltiRoutine));
 
         Debug.Log("<color=red>[OYUNCU NAKAVT OLDU!]</color>");
 
@@ -1232,7 +1338,22 @@ public class PlayerController : MonoBehaviour
     {
         if (!isPunching)
         {
-            ExecutePunch();
+            if (!usingUlti)
+            {
+                ExecuteUlti();
+            }
+            else
+            {
+                ExecutePunch();
+            }
+        }
+    }
+
+    public void UltiButton()
+    {
+        if (!usingUlti && !isPunching && !isBlocking && !isDead)
+        {
+            ExecuteUlti();
         }
     }
 

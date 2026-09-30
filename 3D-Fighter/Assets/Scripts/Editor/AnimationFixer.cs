@@ -13,10 +13,12 @@ public class AnimationFixer
         ConfigureClip("Assets/Fighter Animation/Uppercut.fbx", 0f);
         ConfigureClip("Assets/Fighter Animation/Head Hit.fbx", 0f);
         ConfigureClip("Assets/Fighter Animation/Center Block.fbx", 0f);
+        ConfigureClip("Assets/Fighter Animation/Ulti.fbx", 0f);
 
         // 2. Animator Controller dosyalarını güncelle
         EnsureHeadHitInController("Assets/Fighter Animation/Idle.controller");
         EnsureHeadHitInController("Assets/Fighter Animation/Enemy.controller");
+        EnsureUltiInController("Assets/Fighter Animation/Idle.controller");
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
@@ -105,6 +107,38 @@ public class AnimationFixer
                 toIdle.duration = 0.15f;
                 toIdle.hasFixedDuration = true;
                 toIdle.canTransitionToSelf = true;
+            }
+        }
+
+        EditorUtility.SetDirty(controller);
+    }
+
+    private static void EnsureUltiInController(string controllerPath)
+    {
+        AnimatorController controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(controllerPath);
+        if (controller == null) return;
+
+        var sm = controller.layers[0].stateMachine;
+        AnimatorState ultiState = null;
+
+        foreach (var cs in sm.states)
+        {
+            if (cs.state.name == "Ulti")
+            {
+                ultiState = cs.state;
+                break;
+            }
+        }
+
+        if (ultiState == null)
+        {
+            ultiState = sm.AddState("Ulti", new Vector3(520, 290, 0));
+            ultiState.speed = 1.15f;
+
+            AnimationClip ultiClip = AssetDatabase.LoadAssetAtPath<AnimationClip>("Assets/Fighter Animation/Ulti.fbx");
+            if (ultiClip != null)
+            {
+                ultiState.motion = ultiClip;
             }
         }
 
