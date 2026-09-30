@@ -14,6 +14,8 @@ public class UIManager : MonoBehaviour
     [SerializeField] GameObject mobileControlPanel;
     [SerializeField] GameObject healtBarPanel;
 
+    [SerializeField] TMP_Text hitButtonText;
+
     [Header("Referanslar")]
     [SerializeField] EnemySpawner enemySpawner;
     [SerializeField] PlayerController playerController;
@@ -60,6 +62,18 @@ public class UIManager : MonoBehaviour
         if (mobileControlPanel != null)
         {
             mobileControlPanel.SetActive(startPanel == null || !startPanel.activeSelf);
+        }
+    }
+
+    void Update()
+    {
+        if (!playerController.usingUlti)
+        {
+            hitButtonText.SetText("ULTİ");
+        }
+        else
+        {
+            hitButtonText.SetText("Vur");
         }
     }
 

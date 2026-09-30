@@ -88,8 +88,13 @@ public class PlayerController : MonoBehaviour
     [Header("Mobil Kontroller")]
     [SerializeField] private VirtualJoystick joystick;
     private int playerDoBlock;
-    bool usingUlti = false;
+    public bool usingUlti = true;
     [SerializeField] Image playerHealthBar;
+
+    void Awake()
+    {
+        StartCoroutine(WaitForUlti());
+    }
     void Start()
     {
         startPosition = new Vector3(transform.position.x, standingYPosition, transform.position.z);

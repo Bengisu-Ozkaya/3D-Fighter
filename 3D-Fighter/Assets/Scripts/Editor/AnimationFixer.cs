@@ -12,6 +12,7 @@ public class AnimationFixer
         ConfigureClip("Assets/Fighter Animation/Right.fbx", 10f);
         ConfigureClip("Assets/Fighter Animation/Uppercut.fbx", 0f);
         ConfigureClip("Assets/Fighter Animation/Head Hit.fbx", 0f);
+        ConfigureClip("Assets/Fighter Animation/Center Block.fbx", 0f);
 
         // 2. Animator Controller dosyalarını güncelle
         EnsureHeadHitInController("Assets/Fighter Animation/Idle.controller");

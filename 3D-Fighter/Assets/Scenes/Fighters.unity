@@ -2532,7 +2532,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0}
   m_AnchorMax: {x: 0.5, y: 0}
-  m_AnchoredPosition: {x: 0, y: -335.0823}
+  m_AnchoredPosition: {x: 0, y: -335}
   m_SizeDelta: {x: 450, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &356023763
@@ -8332,6 +8332,7 @@ MonoBehaviour:
   gameOverPanel: {fileID: 487138067}
   mobileControlPanel: {fileID: 1736836359}
   healtBarPanel: {fileID: 274539862}
+  hitButtonText: {fileID: 1128535192}
   enemySpawner: {fileID: 372237216}
   playerController: {fileID: 980646918}
 --- !u!114 &1328626421
@@ -10749,7 +10750,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0}
   m_AnchorMax: {x: 0.5, y: 0}
-  m_AnchoredPosition: {x: 0, y: -335.0823}
+  m_AnchoredPosition: {x: 0, y: -335}
   m_SizeDelta: {x: 450, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1803241761

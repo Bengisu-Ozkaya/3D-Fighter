@@ -25,7 +25,6 @@ public class EnemyController : MonoBehaviour
 
     [SerializeField] Animator enemyAnimator;
 
-    // Saldırı Yapay Zekası
     [Header("Saldırı & Takip Ayarları")]
     [Tooltip("Düşmanın saldırıya geçeceği yaklaşma mesafesi")]
     [SerializeField] float attackRange = 1.1f;       // Yumruk yaklaşma mesafesi
@@ -38,6 +37,27 @@ public class EnemyController : MonoBehaviour
     private PlayerController playerController;
     private float nextAttackTime = 0f;
 
+    [Header("Blok & Gard Ayarları (Senaryo 1: Ardışık Darbe Savunması)")]
+    [Tooltip("Düşmanın gard pozisyonuna geçmesi için arka arkaya yemesi gereken darbe sayısı (Normal veya Aparkat)")]
+    [SerializeField] int hitsToTriggerBlock = 2;
+    [Tooltip("Gereken darbe sayısına ulaşıldığında blok yapma olasılığı (1 = %100 kesin blok)")]
+    [Range(0.1f, 1f)]
+    [SerializeField] float blockChance = 1.0f;
+    [Tooltip("Düşmanın gardını havada tutacağı süre (saniye)")]
+    [SerializeField] float blockDuration = 1.2f;
+    [Tooltip("Blok bittikten sonra tekrar blok yapabilmesi için bekleme süresi")]
+    [SerializeField] float blockCooldown = 0.5f;
+    [Tooltip("Oyuncu vurmayı bırakırsa ardışık vuruş sayacının sıfırlanma süresi (saniye)")]
+    [SerializeField] float comboResetThreshold = 1.8f;
+
+    private bool isBlocking = false;
+    public bool IsBlocking => isBlocking;
+
+    private int consecutiveHitsTaken = 0;
+    private float lastHitTakenTime = 0f;
+    private float nextBlockAvailableTime = 0f;
+    private Coroutine blockCoroutine = null;
+
     void Start()
     {
         // Aktif zorluk moduna göre saldırı hasarını ve canını belirle
@@ -46,6 +66,7 @@ public class EnemyController : MonoBehaviour
         {
             attackDamage = spawner.GetCurrentDifficultyDamage();
             SetHealth(spawner.GetCurrentDifficultyEnemyHealth());
+            ApplyDifficultyBlockSettings(spawner.CurrentDifficulty);
         }
 
         //Enemy
@@ -103,6 +124,11 @@ public class EnemyController : MonoBehaviour
 
     public void SetPlayerDead(bool dead)
     {
+        if (dead)
+        {
+            StopBlocking();
+        }
+
         if (enemyAnimator != null)
         {
             enemyAnimator.SetBool("isDeadEnemy", dead);
@@ -165,6 +191,13 @@ public class EnemyController : MonoBehaviour
         if (lookDirection != Vector3.zero)
         {
             transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(lookDirection), Time.deltaTime * 6f);
+        }
+
+        // Eğer düşman şu an blok yapıyorsa: Sadece gardını oyuncuya dönük tutsun, hareket edip saldırmasın
+        if (isBlocking)
+        {
+            ResolveOverlaps();
+            return;
         }
 
         // 2. Diğer düşmanlardan kaçınma (Separation) vektörünü hesapla
@@ -362,13 +395,47 @@ public class EnemyController : MonoBehaviour
 
         if (isDead) return;
 
+        // 1. DÜŞMAN ZATEN BLOKTAYSA (GARD ALMIŞSA)
+        if (isBlocking)
+        {
+            // Aparkat ile gardı parçala (Guard Break)
+            if (isUppercut || damageAmount >= 20f)
+            {
+                Debug.Log($"<color=magenta>[GARD KIRILDI! / GUARD BREAK!]</color> {gameObject.name} gard almışken güçlü aparkat darbesi yedi! Gard parçalandı! Hasar: {damageAmount}");
+                StopBlocking();
+                consecutiveHitsTaken = 0;
+            }
+            // Normal yumruk garda çarpar, hasar almaz
+            else
+            {
+                Debug.Log($"<color=yellow>[DÜŞMAN BLOKLADI!]</color> {gameObject.name} gelen normal yumruğu gardıyla savuşturdu! (Hasar Alınmadı)");
+
+                // Gardın arkasına hafif sarsıntı tepkisi (boksör darbeyi emer)
+                transform.position += (-transform.forward) * (knockbackDistance * 0.4f);
+                Vector3 blockPos = RingBoundary.ClampToArena(transform.position, bodyRadius);
+                transform.position = blockPos;
+                return;
+            }
+        }
+        // 2. DÜŞMAN BLOKTA DEĞİLKEN DARBE ALIYOR (Normal, Aparkat fark etmeksizin)
+        else
+        {
+            // Kombo zaman aşımı kontrolü (araya 1.8 saniyeden fazla süre girdiyse sayacı sıfırla)
+            if (Time.time - lastHitTakenTime > comboResetThreshold)
+            {
+                consecutiveHitsTaken = 0;
+            }
+            lastHitTakenTime = Time.time;
+            consecutiveHitsTaken++;
+        }
+
         health -= damageAmount;
-        Debug.Log($"<color=orange>[DÜŞMAN DARBE ALDI]</color> {gameObject.name} -{damageAmount} can kaybetti! Kalan Can: {health} (Aparkat: {isUppercut})");
+        Debug.Log($"<color=orange>[DÜŞMAN DARBE ALDI]</color> {gameObject.name} -{damageAmount} can kaybetti! Kalan Can: {health} (Aparkat: {isUppercut}, Darbe Sayacı: {consecutiveHitsTaken}/{hitsToTriggerBlock})");
 
         // Darbe alınca hafif geriye çekilme (Knockback)
         SetPosition();
 
-        // 20 ve üzeri güçlü darbelerde (Aparkat) ekstra sarsıntı tepkisi ver
+        // Aparkat darbelerinde ekstra sarsıntı tepkisi ver
         if (isUppercut || damageAmount >= 20f)
         {
             transform.position += (-transform.forward) * (knockbackDistance * 1.5f);
@@ -380,23 +447,111 @@ public class EnemyController : MonoBehaviour
         if (health <= 0)
         {
             Die();
+            return;
         }
-        else
+
+        // 3. ART ARDA 2 DARBE KONTROLÜ (Normal+Normal, Aparkat+Normal, Aparkat+Aparkat vb.)
+        // Eğer 2 darbeye ulaştıysa ve blok bekleme süresi dolduysa BLOK YAP!
+        if (!isBlocking && consecutiveHitsTaken >= hitsToTriggerBlock && Time.time >= nextBlockAvailableTime)
         {
-            if (enemyAnimator != null)
+            consecutiveHitsTaken = 0;
+            StartBlocking();
+            return; // Düşman gard aldı, GetHit animasyonu Center Block'u ezmesin!
+        }
+
+        // 4. Henüz blok tetiklenmediyse (1. darbe ise) darbe animasyonunu oynat
+        if (enemyAnimator != null)
+        {
+            if (isUppercut || damageAmount >= 20f)
             {
-                if (isUppercut || damageAmount >= 20f)
-                {
-                    enemyAnimator.ResetTrigger("GetHit");
-                    enemyAnimator.SetTrigger("GetHeadHit");
-                    enemyAnimator.CrossFadeInFixedTime("Head Hit", 0.08f);
-                }
-                else
-                {
-                    enemyAnimator.ResetTrigger("GetHeadHit");
-                    enemyAnimator.SetTrigger("GetHit");
-                }
+                enemyAnimator.ResetTrigger("GetHit");
+                enemyAnimator.SetTrigger("GetHeadHit");
+                enemyAnimator.CrossFadeInFixedTime("Head Hit", 0.08f);
             }
+            else
+            {
+                enemyAnimator.ResetTrigger("GetHeadHit");
+                enemyAnimator.SetTrigger("GetHit");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Düşmanı gard (blok) pozisyonuna sokar
+    /// </summary>
+    public void StartBlocking()
+    {
+        if (isDead || isBlocking) return;
+
+        if (blockCoroutine != null)
+        {
+            StopCoroutine(blockCoroutine);
+        }
+        blockCoroutine = StartCoroutine(BlockRoutine());
+    }
+
+    IEnumerator BlockRoutine()
+    {
+        isBlocking = true;
+        Debug.Log($"<color=cyan>[DÜŞMAN GARDA GEÇTİ]</color> {gameObject.name} gardını kaldırdı (Blok başladı, Süre: {blockDuration:F1}s)!");
+
+        // Blok süresince düşmanın saldırı sayacını ileriye ertele
+        nextAttackTime = Mathf.Max(nextAttackTime, Time.time + blockDuration + 0.4f);
+
+        if (enemyAnimator != null && !isDead)
+        {
+            enemyAnimator.ResetTrigger("GetHit");
+            enemyAnimator.ResetTrigger("GetHeadHit");
+            enemyAnimator.CrossFadeInFixedTime("Center Block", 0.1f);
+        }
+
+        yield return new WaitForSeconds(blockDuration);
+
+        StopBlocking();
+    }
+
+    /// <summary>
+    /// Gardı indirip normal dövüş (Idle) pozisyonuna döner
+    /// </summary>
+    public void StopBlocking()
+    {
+        if (!isBlocking) return;
+
+        isBlocking = false;
+        nextBlockAvailableTime = Time.time + blockCooldown;
+
+        if (blockCoroutine != null)
+        {
+            StopCoroutine(blockCoroutine);
+            blockCoroutine = null;
+        }
+
+        if (enemyAnimator != null && !isDead)
+        {
+            enemyAnimator.CrossFadeInFixedTime("Idle", 0.15f);
+        }
+    }
+
+    /// <summary>
+    /// Aktif zorluk seviyesine göre blok süresini kalibre eder (Tüm modlarda 2 darbede blok açılır)
+    /// </summary>
+    public void ApplyDifficultyBlockSettings(Difficulty diff)
+    {
+        hitsToTriggerBlock = 2;
+        blockChance = 1.0f;
+        blockCooldown = 0.5f;
+
+        switch (diff)
+        {
+            case Difficulty.Easy:
+                blockDuration = 1.0f;
+                break;
+            case Difficulty.Medium:
+                blockDuration = 1.2f;
+                break;
+            case Difficulty.Hard:
+                blockDuration = 1.4f;
+                break;
         }
     }
 
@@ -427,6 +582,8 @@ public class EnemyController : MonoBehaviour
     {
         if (isDead) return;
         isDead = true;
+
+        StopBlocking();
 
         Debug.Log($"<color=red>[DÜŞMAN YENİLDİ]</color> {gameObject.name} nakavt oldu!");
 

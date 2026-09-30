@@ -703,6 +703,7 @@ public class EnemySpawner : MonoBehaviour
                     ec.transform.rotation = spawnRot;
                     ec.SetAttackDamage(GetCurrentDifficultyDamage());
                     ec.SetHealth(GetCurrentDifficultyEnemyHealth());
+                    ec.ApplyDifficultyBlockSettings(currentDifficulty);
                     activeEnemies.Add(ec);
                     if (player != null)
                     {
