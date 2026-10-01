@@ -39,7 +39,7 @@ public class PlayerController : MonoBehaviour
     [SerializeField] Transform leftFist;
 
     [Header("Oyuncu Sağlık Ayarları")]
-    [SerializeField] float playerHealth = 100f;
+    public float playerHealth = 100f;
     [SerializeField] float maxPlayerHealth = 100f;
     [SerializeField] float respawnDelay = 3f;
 
@@ -89,14 +89,17 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private VirtualJoystick joystick;
     private int playerDoBlock;
 
-    [Header("Ulti Yeteneği ('R' Tuşu)")]
+    [Header("Ulti Yeteneği")]
     public bool usingUlti = true;
     [Tooltip("Ulti vuruşunun vereceği hasar")]
-    [SerializeField] private float ultiDamage = 50f;
+    [SerializeField] private float ultiDamage = 30f;
     [Tooltip("Ulti yeteneğinin tekrar dolma süresi (Cooldown - saniye)")]
-    [SerializeField] private float ultiCooldown = 6f;
+    [SerializeField] private float ultiCooldown = 3f;
     [Tooltip("Ulti vuruşunun etki alanı yarıçapı")]
     [SerializeField] private float ultiRange = 2.0f;
+
+    private bool isCastingUlti = false;
+    public bool IsCastingUlti => isCastingUlti;
 
     [SerializeField] Image playerHealthBar;
 
@@ -216,8 +219,12 @@ public class PlayerController : MonoBehaviour
             }
         }
 
-        // Blok yaparken hareket ve vuruş yapılmasın
-        if (isBlocking) return;
+        // Blok yaparken hareket ve vuruş yapılmasın; yüzünü rakibe dönük tutsun
+        if (isBlocking)
+        {
+            FaceOpponentOnPunch();
+            return;
+        }
 
         // 2. Karakter Hareketi
         HandleMovement();
@@ -485,6 +492,7 @@ public class PlayerController : MonoBehaviour
         if (usingUlti || isPunching || isBlocking || isDead || isGameCompleted || isStandingUp) return;
         usingUlti = true;
         isPunching = true;
+        isCastingUlti = true;
         hasHitCurrentPunch = false;
 
         Debug.Log("<color=magenta>[ULTİ DEVREYE GİRDİ!]</color> Oyuncu Ulti animasyonunu başlattı!");
@@ -493,7 +501,7 @@ public class PlayerController : MonoBehaviour
 
         if (playerAnim != null)
         {
-            playerAnim.CrossFadeInFixedTime("Ulti", 0.15f);
+            playerAnim.CrossFadeInFixedTime("Ulti", 0.2f);
         }
 
         StartCoroutine(UltiRoutine());
@@ -551,6 +559,7 @@ public class PlayerController : MonoBehaviour
         }
 
         isPunching = false;
+        isCastingUlti = false; // Ulti animasyonu tamamen bitti!
 
         // 5. Cooldown süresini başlat
         StartCoroutine(WaitForUlti());
@@ -572,7 +581,7 @@ public class PlayerController : MonoBehaviour
                 dir.y = 0f;
                 if (Vector3.Dot(transform.forward, dir) >= 0.1f)
                 {
-                    enemy.TakeDamage(ultiDamage, true); // 50 hasar, gard kırma ve sarsıntı!
+                    enemy.TakeDamage(ultiDamage, true, true); // isUppercut: true, isUlti: true
                     Debug.Log($"<color=magenta>[ULTİ İSABET ETTİ!]</color> {enemy.name} düşmanına {ultiDamage} hasar verildi!");
                     enemyController = enemy;
                     hitAny = true;
@@ -730,6 +739,14 @@ public class PlayerController : MonoBehaviour
                 transform.rotation = Quaternion.LookRotation(dirToEnemy.normalized);
             }
         }
+        else
+        {
+            Vector3 camFwd = GetCameraForward();
+            if (camFwd.sqrMagnitude > 0.001f)
+            {
+                transform.rotation = Quaternion.LookRotation(camFwd);
+            }
+        }
     }
 
     /// <summary>
@@ -743,7 +760,7 @@ public class PlayerController : MonoBehaviour
             // Normal dalgalar arasında Show Pose'a geçmiyoruz, oyuncu Idle'da kalır ve serbestçe hareket edebilir
             playerAnim.SetBool("isDeadEnemy", false);
 
-            if (dead)
+            if (dead && !isCastingUlti)
             {
                 isPunching = false;
                 isPunchActive = false;
@@ -836,6 +853,15 @@ public class PlayerController : MonoBehaviour
 
         // Animasyon bittikten sonra panelin açılması için küçük ve estetik bir bekleme
         yield return new WaitForSeconds(0.4f);
+
+        if (uiManager == null)
+        {
+            uiManager = FindObjectOfType<UIManager>();
+        }
+        if (uiManager != null)
+        {
+            uiManager.ShowVictoryPanel();
+        }
     }
 
     /// <summary>
@@ -860,9 +886,15 @@ public class PlayerController : MonoBehaviour
             joystick.ResetJoystick();
         }
 
+        maxPlayerHealth = 100f;
         playerHealth = maxPlayerHealth;
         punchDamage = 10f;
         uppercutDamage = 20f;
+        ultiDamage = 30f;
+        if (playerHealthBar != null)
+        {
+            playerHealthBar.fillAmount = 1f;
+        }
         transform.position = new Vector3(startPosition.x, standingYPosition, startPosition.z);
         transform.rotation = startRotation;
 
@@ -1024,14 +1056,17 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        bool isCastingUlti = isPunching && playerAnim != null && playerAnim.GetCurrentAnimatorStateInfo(0).IsName("Ulti");
-        if (!isCastingUlti)
+        // Ulti Dokunulmazlığı: Kullanıcı ulti attığında düşmanlardan darbe ve hasar alamaz
+        if (isCastingUlti || (playerAnim != null && playerAnim.GetCurrentAnimatorStateInfo(0).IsName("Ulti")))
         {
-            isPunching = false;
-            isPunchActive = false;
-            StopCoroutine(nameof(PunchRoutine));
-            StopCoroutine(nameof(UppercutRoutine));
+            Debug.Log("<color=magenta>[ULTİ DOKUNULMAZLIĞI]</color> Oyuncu ulti atarken darbe alamaz!");
+            return;
         }
+
+        isPunching = false;
+        isPunchActive = false;
+        StopCoroutine(nameof(PunchRoutine));
+        StopCoroutine(nameof(UppercutRoutine));
 
         StartCoroutine(WaitPunch());
         playerHealth -= damageAmount;
@@ -1242,7 +1277,7 @@ public class PlayerController : MonoBehaviour
         playerHealth = maxPlayerHealth;
 
         // Can Barını doldur
-        playerHealthBar.fillAmount = playerHealth/maxPlayerHealth;
+        playerHealthBar.fillAmount = playerHealth / maxPlayerHealth;
 
         // Kip Up animasyonunu oynat
         string getUpAnim = (playerAnim != null && playerAnim.HasState(0, Animator.StringToHash("Kip Up"))) ? "Kip Up" : "Stand Up";
@@ -1302,6 +1337,39 @@ public class PlayerController : MonoBehaviour
     }
 
     public float GetHealth() => playerHealth;
+
+    /// <summary>
+    /// Oyuncunun maksimum canını ayarlar. restoreToFull true ise can tamamen dolar, false ise mevcut can korunur
+    /// </summary>
+    public void SetMaxHealth(float maxHp, bool restoreToFull = false)
+    {
+        maxPlayerHealth = maxHp;
+        if (restoreToFull)
+        {
+            playerHealth = maxPlayerHealth;
+        }
+        else if (playerHealth > maxPlayerHealth)
+        {
+            playerHealth = maxPlayerHealth;
+        }
+
+        if (playerHealthBar != null && maxPlayerHealth > 0)
+        {
+            playerHealthBar.fillAmount = playerHealth / maxPlayerHealth;
+        }
+    }
+
+    public float GetMaxHealth() => maxPlayerHealth;
+
+    /// <summary>
+    /// Oyuncunun ulti hasarını ayarlar
+    /// </summary>
+    public void SetUltiDamage(float damage)
+    {
+        ultiDamage = damage;
+    }
+
+    public float GetUltiDamage() => ultiDamage;
 
     /// <summary>
     /// Oyuncunun normal yumruk hasarını ayarlar

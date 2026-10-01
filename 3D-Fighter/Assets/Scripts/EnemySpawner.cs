@@ -27,6 +27,33 @@ public class ArenaLightTier
     }
 }
 
+[System.Serializable]
+public class WaveStats
+{
+    [Header("Oyuncu (Player)")]
+    public float playerHealth = 100f;
+    public float playerPunchDamage = 10f;
+    public float playerUppercutDamage = 20f;
+    public float playerUltiDamage = 30f;
+
+    [Header("Düşman (Enemy)")]
+    public float enemyHealth = 30f;
+    public float enemyPunchDamage = 5f;
+    public float enemyUppercutDamage = 10f;
+
+    public WaveStats(float pHealth, float pPunch, float pUpper, float pUlti,
+                     float eHealth, float ePunch, float eUpper)
+    {
+        playerHealth = pHealth;
+        playerPunchDamage = pPunch;
+        playerUppercutDamage = pUpper;
+        playerUltiDamage = pUlti;
+        enemyHealth = eHealth;
+        enemyPunchDamage = ePunch;
+        enemyUppercutDamage = eUpper;
+    }
+}
+
 public class EnemySpawner : MonoBehaviour
 {
     [Header("Dalga ve Düşman Ayarları")]
@@ -82,10 +109,37 @@ public class EnemySpawner : MonoBehaviour
     [Tooltip("Zor modda oyuncunun aparkat hasarı (İstenen: 30)")]
     [SerializeField] float hardPlayerUppercutDamage = 30f;
 
-    // Zorluk Modlarına Göre Temel Dalga Düşman Sayıları
-    private readonly int[] easyWaveCounts = new int[] { 1, 2, 3, 4, 5, 6 };
-    private readonly int[] midWaveCounts = new int[] { 1, 2, 3, 4, 5 };
-    private readonly int[] hardWaveCounts = new int[] { 1, 2, 3, 4, 5 };
+    public const int TOTAL_WAVES = 10;
+
+    // Zorluk Modlarına Göre Temel Dalga Düşman Sayıları (10 Dalga: 1-3 -> 1,2,3 | 4-7 -> 2,3,4,5 | 8-10 -> 2,3,4)
+    private readonly int[] easyWaveCounts = new int[] { 1, 2, 3, 2, 3, 4, 5, 2, 3, 4 };
+    private readonly int[] midWaveCounts = new int[] { 1, 2, 3, 2, 3, 4, 5, 2, 3, 4 };
+    private readonly int[] hardWaveCounts = new int[] { 1, 2, 3, 2, 3, 4, 5, 2, 3, 4 };
+
+    // Kolay mod için 10 dalganın kullanıcı tarafından tanımlanan tam istatistikleri
+    private readonly WaveStats[] easyWaveStats = new WaveStats[]
+    {
+        // 1. Dalga: Player (100, 10, 20, 30) | Enemy (30, 5, 10)
+        new WaveStats(100f, 10f, 20f, 30f, 30f, 5f, 10f),
+        // 2. Dalga: Player (100, 10, 20, 30) | Enemy (30, 7, 15)
+        new WaveStats(100f, 10f, 20f, 30f, 30f, 7f, 15f),
+        // 3. Dalga: Player (100, 10, 20, 30) | Enemy (30, 10, 20)
+        new WaveStats(100f, 10f, 20f, 30f, 30f, 10f, 20f),
+        // 4. Dalga: Player (110, 10, 20, 30) | Enemy (30, 7, 15)
+        new WaveStats(110f, 10f, 20f, 30f, 30f, 7f, 15f),
+        // 5. Dalga: Player (110, 10, 20, 30) | Enemy (30, 10, 20)
+        new WaveStats(110f, 10f, 20f, 30f, 30f, 10f, 20f),
+        // 6. Dalga: Player (110, 10, 20, 30) | Enemy (30, 12, 25)
+        new WaveStats(110f, 10f, 20f, 30f, 30f, 12f, 25f),
+        // 7. Dalga: Player (110, 10, 20, 30) | Enemy (30, 15, 25)
+        new WaveStats(110f, 10f, 20f, 30f, 30f, 15f, 25f),
+        // 8. Dalga: Player (120, 12, 25, 30) | Enemy (30, 10, 20)
+        new WaveStats(120f, 12f, 25f, 30f, 30f, 10f, 20f),
+        // 9. Dalga: Player (120, 12, 25, 30) | Enemy (30, 12, 25)
+        new WaveStats(120f, 12f, 25f, 30f, 30f, 12f, 25f),
+        // 10. Dalga: Player (120, 12, 25, 30) | Enemy (30, 15, 25)
+        new WaveStats(120f, 12f, 25f, 30f, 30f, 15f, 25f)
+    };
 
     private int[] currentWaveCounts = new int[] { 1, 2, 3 };
     private Difficulty currentDifficulty = Difficulty.Easy;
@@ -188,6 +242,44 @@ public class EnemySpawner : MonoBehaviour
     }
 
     /// <summary>
+    /// Verilen dalga numarasına göre ilgili modun dalga istatistiklerini döner (1-10)
+    /// </summary>
+    public WaveStats GetWaveStatsForWave(int waveNumber)
+    {
+        int index = Mathf.Clamp(waveNumber - 1, 0, TOTAL_WAVES - 1);
+        if (currentDifficulty == Difficulty.Easy)
+        {
+            return easyWaveStats[index];
+        }
+        else if (currentDifficulty == Difficulty.Medium)
+        {
+            return new WaveStats(100f, midPlayerDamage, midPlayerUppercutDamage, 30f, midEnemyHealth, midDamage, 20f);
+        }
+        else // Hard
+        {
+            return new WaveStats(100f, hardPlayerDamage, hardPlayerUppercutDamage, 30f, hardEnemyHealth, hardDamage, 30f);
+        }
+    }
+
+    /// <summary>
+    /// Oyuncunun canını, yumruk, aparkat ve ulti hasarlarını mevcut dalgaya göre kalibre eder.
+    /// restoreHealth true ise can tamamen dolar (Oyun başı / Relive), false ise mevcut can korunur (Dalga geçişleri).
+    /// </summary>
+    public void ApplyWaveStatsToPlayer(int waveNumber, bool restoreHealth = false)
+    {
+        PlayerController player = FindObjectOfType<PlayerController>();
+        if (player != null)
+        {
+            WaveStats stats = GetWaveStatsForWave(waveNumber);
+            player.SetMaxHealth(stats.playerHealth, restoreToFull: restoreHealth);
+            player.SetPunchDamage(stats.playerPunchDamage);
+            player.SetUppercutDamage(stats.playerUppercutDamage);
+            player.SetUltiDamage(stats.playerUltiDamage);
+            Debug.Log($"<color=cyan>[OYUNCU GÜNCELLENDİ (DALGA {waveNumber})]</color> Can: {player.playerHealth}/{stats.playerHealth} (Yenilendi: {restoreHealth}) | Normal: {stats.playerPunchDamage} | Aparkat: {stats.playerUppercutDamage} | Ulti: {stats.playerUltiDamage}");
+        }
+    }
+
+    /// <summary>
     /// Environment 2 devre dışı bırakıldığı için daima Environment 1 (Index 0) döner
     /// </summary>
     public int GetEnvironmentIndexForWave(int waveNumber)
@@ -233,7 +325,7 @@ public class EnemySpawner : MonoBehaviour
     }
 
     /// <summary>
-    /// Seçilen zorluk derecesiyle oyunu ve ilk dalgayı başlatır (Sonsuz mod)
+    /// Seçilen zorluk derecesiyle oyunu ve ilk dalgayı başlatır (10 Dalga)
     /// </summary>
     public void StartGame(Difficulty difficulty)
     {
@@ -268,29 +360,22 @@ public class EnemySpawner : MonoBehaviour
         // 1. Dalga arena ışık rengini (Beyaz) anında uygula
         UpdateArenaLighting(wave, immediate: true);
 
-        float dmg = GetCurrentDifficultyDamage();
-        float hp = GetCurrentDifficultyEnemyHealth();
-        float playerDmg = GetCurrentDifficultyPlayerDamage();
-        float playerUppercutDmg = GetCurrentDifficultyPlayerUppercutDamage();
-        Debug.Log($"<color=cyan>[SONSUZ DALGA OYUNU BAŞLADI]</color> Mod: {difficulty} | Düşman Canı: {hp} | Düşman Hasarı: {dmg} | Oyuncu Yumruk: {playerDmg} | Aparkat: {playerUppercutDmg}");
+        WaveStats initialStats = GetWaveStatsForWave(wave);
+        Debug.Log($"<color=cyan>[10 DALGALI OYUN BAŞLADI]</color> Mod: {difficulty} | Dalga: {wave}/{TOTAL_WAVES} | Düşman Can: {initialStats.enemyHealth} | Vuruş: {initialStats.enemyPunchDamage} | Aparkat: {initialStats.enemyUppercutDamage}");
 
         // Sahnedeki mevcut düşmanların hasarını ve canını güncelle
         foreach (var ec in FindObjectsOfType<EnemyController>())
         {
             if (ec != null)
             {
-                ec.SetAttackDamage(dmg);
-                ec.SetHealth(hp);
+                ec.SetAttackDamage(initialStats.enemyPunchDamage);
+                ec.SetUppercutDamage(initialStats.enemyUppercutDamage);
+                ec.SetHealth(initialStats.enemyHealth);
             }
         }
 
-        // Oyuncunun yumruk ve aparkat hasarını güncelle
-        PlayerController player = FindObjectOfType<PlayerController>();
-        if (player != null)
-        {
-            player.SetPunchDamage(playerDmg);
-            player.SetUppercutDamage(playerUppercutDmg);
-        }
+        // Oyuncunun canını, yumruk, aparkat ve ulti hasarlarını 1. dalgaya göre ayarla (Oyun başında can dolar)
+        ApplyWaveStatsToPlayer(wave, restoreHealth: true);
 
         // İlk dalgayı başlat
         StartCoroutine(SpawnEnemyRoutine(wave, true));
@@ -315,9 +400,39 @@ public class EnemySpawner : MonoBehaviour
         // Sahnede önceki dalgadan HİÇBİR düşman kalmadıysa ve yeni dalga henüz başlatılmadıysa
         if (activeEnemies.Count == 0 && !anyEnemyInScene && !isSpawning)
         {
-            // Dalgalar kullanıcı ölene kadar sonsuz olarak artar (1, 2, 3, 4, 5...)
+            // Seçilen mod 10 dalga tamamlandığında biter
+            if (wave >= TOTAL_WAVES)
+            {
+                CompleteGame();
+                return;
+            }
+
             wave++;
             StartCoroutine(SpawnEnemyRoutine(wave, false));
+        }
+    }
+
+    /// <summary>
+    /// 10 dalganın tamamı temizlendiğinde oyunu zaferle sonuçlandırır
+    /// </summary>
+    private void CompleteGame()
+    {
+        isGameStarted = false;
+        isSpawning = false;
+        Debug.Log($"<color=green>[OYUN TAMAMLANDI - 10 DALGA BİTTİ!]</color> Mod: {currentDifficulty} başarıyla tamamlandı!");
+
+        PlayerController player = FindObjectOfType<PlayerController>();
+        if (player != null)
+        {
+            player.PlayVictoryShowPose();
+        }
+        else
+        {
+            UIManager ui = FindObjectOfType<UIManager>();
+            if (ui != null)
+            {
+                ui.ShowVictoryPanel();
+            }
         }
     }
 
@@ -340,17 +455,13 @@ public class EnemySpawner : MonoBehaviour
         }
         currentEnvironmentIndex = 0;
 
-        // Öldüğü dalganın ışık rengini anında uygula (Örn: Dalga 6-10 ise Mavi, 11-15 ise Kırmızı vb.)
+        // Öldüğü dalganın ışık rengini anında uygula
         UpdateArenaLighting(wave, immediate: true);
 
-        PlayerController player = FindObjectOfType<PlayerController>();
-        if (player != null)
-        {
-            player.SetPunchDamage(GetCurrentDifficultyPlayerDamage());
-            player.SetUppercutDamage(GetCurrentDifficultyPlayerUppercutDamage());
-        }
+        // Oyuncuyu öldüğü dalganın değerleriyle tazele (Relive olduğu için can dolar)
+        ApplyWaveStatsToPlayer(wave, restoreHealth: true);
 
-        Debug.Log($"<color=cyan>[ÖLÜNEN DALGA YENİDEN BAŞLATILIYOR]</color> Dalga {wave} - Saha: #1 - Mod: {currentDifficulty}");
+        Debug.Log($"<color=cyan>[ÖLÜNEN DALGA YENİDEN BAŞLATILIYOR]</color> Dalga {wave}/{TOTAL_WAVES} - Saha: #1 - Mod: {currentDifficulty}");
         StartCoroutine(SpawnEnemyRoutine(wave, true));
     }
 
@@ -376,12 +487,8 @@ public class EnemySpawner : MonoBehaviour
         // Başlangıç dalgası ışığını anında uygula (Beyaz)
         UpdateArenaLighting(1, immediate: true);
 
-        PlayerController player = FindObjectOfType<PlayerController>();
-        if (player != null)
-        {
-            player.SetPunchDamage(GetCurrentDifficultyPlayerDamage());
-            player.SetUppercutDamage(GetCurrentDifficultyPlayerUppercutDamage());
-        }
+        // Oyuncuyu 1. dalga değerleriyle tazele (Can dolar)
+        ApplyWaveStatsToPlayer(1, restoreHealth: true);
 
         Debug.Log($"<color=cyan>[OYUN YENİDEN BAŞLATILDI]</color> Mod: {currentDifficulty} - Saha: #1");
         StartCoroutine(SpawnEnemyRoutine(wave, true));
@@ -412,8 +519,7 @@ public class EnemySpawner : MonoBehaviour
         PlayerController player = FindObjectOfType<PlayerController>();
         if (player != null)
         {
-            player.SetPunchDamage(10f);
-            player.SetUppercutDamage(20f);
+            player.ResetPlayerState();
         }
     }
 
@@ -445,11 +551,15 @@ public class EnemySpawner : MonoBehaviour
     {
         isSpawning = true;
 
-        // Her 5 dalgada bir arena Point Light renklerini daha yırtıcı renge geçir (Örn: Dalga 6, 11, 16...)
-        if ((currentWave - 1) % wavesPerColorTier == 0 && currentWave > 1)
+        // 4. Dalga başında can 110'a, 8. Dalga başında can 120'ye dolar. Diğer dalgalarda mevcut can korunur.
+        bool shouldRefillHealth = isFirst || currentWave == 4 || currentWave == 8;
+        ApplyWaveStatsToPlayer(currentWave, restoreHealth: shouldRefillHealth);
+
+        // İlk 3 dalgada Beyaz (Dalga 1-3), 4. dalgada Neon Mavi'ye (Dalga 4-7), 8. dalgada Kan Kırmızısı'na (Dalga 8-10) geçiş
+        if ((currentWave == 4 || currentWave == 8) && !isFirst)
         {
             ArenaLightTier tier = GetLightTierForWave(currentWave);
-            Debug.Log($"<color=cyan>[ARENA IŞIKLARI]</color> {wavesPerColorTier} Dövüş tamamlandı! Point Light'lar yeni yırtıcı renge geçiyor: <color=yellow>{tier.tierName}</color> (Dalga {currentWave})");
+            Debug.Log($"<color=cyan>[ARENA IŞIKLARI]</color> Yeni kademeye geçildi! Point Light'lar yeni renge geçiyor: <color=yellow>{tier.tierName}</color> (Dalga {currentWave})");
             UpdateArenaLighting(currentWave, immediate: false);
         }
         else if (isFirst)
@@ -474,7 +584,7 @@ public class EnemySpawner : MonoBehaviour
     }
 
     /// <summary>
-    /// Varsayılan yırtıcı arena ışık renk paletini kurar (Dalga 1-5: Beyaz, Dalga 6-10: Neon Mavi, Dalga 11-15: Kırmızı...)
+    /// Varsayılan arena ışık renk paletini kurar (Dalga 1-3: Beyaz, Dalga 4-7: Neon Mavi, Dalga 8-10: Kan Kırmızısı)
     /// </summary>
     private void EnsureDefaultLightTiers()
     {
@@ -483,20 +593,15 @@ public class EnemySpawner : MonoBehaviour
             arenaLightTiers = new List<ArenaLightTier>();
         }
 
-        if (arenaLightTiers.Count == 0)
+        if (arenaLightTiers.Count < 3)
         {
-            // 1. Kademe: Beyaz (Normal / Doğal Arena Işığı)
-            arenaLightTiers.Add(new ArenaLightTier("Dalga 1-5 (Beyaz / Doğal Işık)", Color.white, 10f));
-            // 2. Kademe: Neon Elektrik Mavisi (Yırtıcı Soğuk Ton)
-            arenaLightTiers.Add(new ArenaLightTier("Dalga 6-10 (Yırtıcı Neon Mavi)", new Color(0f, 0.65f, 1f, 1f), 11f));
-            // 3. Kademe: Şiddetli Kan Kırmızısı (Yırtıcı Saldırgan Ton)
-            arenaLightTiers.Add(new ArenaLightTier("Dalga 11-15 (Kan Kırmızısı / Crimson)", new Color(1f, 0.08f, 0.08f, 1f), 12f));
-            // 4. Kademe: Derin Yırtıcı Neon Mor / Violet
-            arenaLightTiers.Add(new ArenaLightTier("Dalga 16-20 (Yırtıcı Neon Mor)", new Color(0.65f, 0f, 1f, 1f), 12f));
-            // 5. Kademe: Cehennem Ateşi / Lav Turuncusu
-            arenaLightTiers.Add(new ArenaLightTier("Dalga 21-25 (Alev Turuncusu)", new Color(1f, 0.35f, 0f, 1f), 12f));
-            // 6. Kademe: Tehlikeli Zehir Yeşili / Toxic Green
-            arenaLightTiers.Add(new ArenaLightTier("Dalga 26-30 (Zehirli Asit Yeşili)", new Color(0f, 1f, 0.35f, 1f), 11f));
+            arenaLightTiers.Clear();
+            // 1. Kademe: Beyaz (Normal / Doğal Arena Işığı) - Dalga 1-3
+            arenaLightTiers.Add(new ArenaLightTier("Dalga 1-3 (Beyaz / Doğal Işık)", Color.white, 10f));
+            // 2. Kademe: Neon Elektrik Mavisi (Yırtıcı Soğuk Ton) - Dalga 4-7
+            arenaLightTiers.Add(new ArenaLightTier("Dalga 4-7 (Yırtıcı Neon Mavi)", new Color(0f, 0.7f, 1f, 1f), 11f));
+            // 3. Kademe: Şiddetli Kan Kırmızısı (Yırtıcı Saldırgan Ton) - Dalga 8-10
+            arenaLightTiers.Add(new ArenaLightTier("Dalga 8-10 (Kan Kırmızısı / Crimson)", new Color(1f, 0.08f, 0.08f, 1f), 12f));
         }
     }
 
@@ -560,7 +665,10 @@ public class EnemySpawner : MonoBehaviour
     }
 
     /// <summary>
-    /// Belirtilen dalgaya karşılık gelen ışık kademesini döner (5 dövüşte bir değişir, bitince yırtıcı renkler döner)
+    /// Belirtilen dalgaya karşılık gelen ışık kademesini döner:
+    /// Dalga 1-3 -> Beyaz
+    /// Dalga 4-7 -> Neon Mavi
+    /// Dalga 8-10 -> Kan Kırmızısı
     /// </summary>
     public ArenaLightTier GetLightTierForWave(int waveNumber)
     {
@@ -570,18 +678,23 @@ public class EnemySpawner : MonoBehaviour
             return new ArenaLightTier("Beyaz", Color.white, 10f);
         }
 
-        int tierIndex = (waveNumber - 1) / wavesPerColorTier;
+        int tierIndex;
+        if (waveNumber <= 3)
+        {
+            tierIndex = 0; // Beyaz
+        }
+        else if (waveNumber <= 7)
+        {
+            tierIndex = 1; // Neon Mavi
+        }
+        else
+        {
+            tierIndex = 2; // Kan Kırmızısı
+        }
+
         if (tierIndex < arenaLightTiers.Count)
         {
             return arenaLightTiers[tierIndex];
-        }
-
-        // Önceden tanımlı kademeler bittiğinde 0. indeksteki beyazı atlayıp yırtıcı renkler arasında döngüye devam et
-        if (arenaLightTiers.Count > 1)
-        {
-            int predatoryCount = arenaLightTiers.Count - 1;
-            int loopedIndex = 1 + ((tierIndex - 1) % predatoryCount);
-            return arenaLightTiers[loopedIndex];
         }
 
         return arenaLightTiers[arenaLightTiers.Count - 1];
@@ -687,6 +800,7 @@ public class EnemySpawner : MonoBehaviour
         if (enemyPrefab != null)
         {
             PlayerController player = FindObjectOfType<PlayerController>();
+            WaveStats waveStats = GetWaveStatsForWave(wave);
 
             for (int i = 0; i < count; i++)
             {
@@ -701,15 +815,14 @@ public class EnemySpawner : MonoBehaviour
                 if (ec != null)
                 {
                     ec.transform.rotation = spawnRot;
-                    ec.SetAttackDamage(GetCurrentDifficultyDamage());
-                    ec.SetHealth(GetCurrentDifficultyEnemyHealth());
+                    ec.SetAttackDamage(waveStats.enemyPunchDamage);
+                    ec.SetUppercutDamage(waveStats.enemyUppercutDamage);
+                    ec.SetHealth(waveStats.enemyHealth);
                     ec.ApplyDifficultyBlockSettings(currentDifficulty);
                     activeEnemies.Add(ec);
                     if (player != null)
                     {
                         player.OnEnemySpawned(ec);
-                        player.SetPunchDamage(GetCurrentDifficultyPlayerDamage());
-                        player.SetUppercutDamage(GetCurrentDifficultyPlayerUppercutDamage());
                     }
                 }
             }

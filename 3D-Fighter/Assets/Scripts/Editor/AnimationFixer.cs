@@ -7,13 +7,15 @@ public class AnimationFixer
     [MenuItem("Tools/3D Fighter/Yumruk ve Head Hit Ayarlarini Guncelle")]
     public static void ApplyAllFixes()
     {
-        // 1. Animasyon FBX import ayarlarını güvenceye al
         ConfigureClip("Assets/Fighter Animation/Left.fbx", 18f);
         ConfigureClip("Assets/Fighter Animation/Right.fbx", 10f);
         ConfigureClip("Assets/Fighter Animation/Uppercut.fbx", 0f);
         ConfigureClip("Assets/Fighter Animation/Head Hit.fbx", 0f);
         ConfigureClip("Assets/Fighter Animation/Center Block.fbx", 0f);
-        ConfigureClip("Assets/Fighter Animation/Ulti.fbx", 0f);
+        ConfigureClip("Assets/Fighter Animation/Ulti.fbx", 14f);
+        ConfigureClip("Assets/Fighter Animation/Left Block.fbx", 0f);
+        ConfigureClip("Assets/Fighter Animation/Right Block.fbx", 0f);
+        ConfigureClip("Assets/Fighter Animation/Body Hit.fbx", 0f);
 
         // 2. Animator Controller dosyalarını güncelle
         EnsureHeadHitInController("Assets/Fighter Animation/Idle.controller");

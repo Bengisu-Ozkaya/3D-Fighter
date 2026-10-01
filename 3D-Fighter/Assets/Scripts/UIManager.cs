@@ -8,13 +8,13 @@ using System.Diagnostics;
 public class UIManager : MonoBehaviour
 {
     [Header("UI Panelleri")]
-    [SerializeField] GameObject startPanel;
-    [SerializeField] GameObject victoryPanel;
-    [SerializeField] GameObject gameOverPanel;
-    [SerializeField] GameObject mobileControlPanel;
-    [SerializeField] GameObject healtBarPanel;
-
-    [SerializeField] TMP_Text hitButtonText;
+    [SerializeField] private GameObject startPanel;
+    [SerializeField] private GameObject victoryPanel;
+    [SerializeField] private GameObject gameOverPanel;
+    [SerializeField] private GameObject mobileControlPanel;
+    [SerializeField] private GameObject healtBarPanel;
+    [SerializeField] private TMP_Text hitButtonText;
+    [SerializeField] private TMP_Text playerHealthText;
 
     [Header("Referanslar")]
     [SerializeField] EnemySpawner enemySpawner;
@@ -37,6 +37,11 @@ public class UIManager : MonoBehaviour
             FindGameOverPanel();
         }
 
+        if (victoryPanel == null)
+        {
+            FindVictoryPanel();
+        }
+
         if (mobileControlPanel == null)
         {
             Canvas canvas = FindObjectOfType<Canvas>();
@@ -51,6 +56,7 @@ public class UIManager : MonoBehaviour
         }
 
         BindGameOverButtons();
+        BindVictoryButtons();
     }
 
     void Start()
@@ -58,7 +64,7 @@ public class UIManager : MonoBehaviour
         if (startPanel != null) startPanel.SetActive(true);
         if (victoryPanel != null) victoryPanel.SetActive(false);
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
-        if(healtBarPanel != null) healtBarPanel.SetActive(false);
+        if (healtBarPanel != null) healtBarPanel.SetActive(false);
         if (mobileControlPanel != null)
         {
             mobileControlPanel.SetActive(startPanel == null || !startPanel.activeSelf);
@@ -67,13 +73,61 @@ public class UIManager : MonoBehaviour
 
     void Update()
     {
-        if (!playerController.usingUlti)
+        if (playerController != null)
         {
-            hitButtonText.SetText("ULTİ");
+            if (playerHealthText != null)
+            {
+                playerHealthText.SetText(Mathf.Max(0, Mathf.CeilToInt(playerController.playerHealth)).ToString());
+            }
+
+            if (hitButtonText != null)
+            {
+                if (!playerController.usingUlti)
+                {
+                    hitButtonText.SetText("ULTİ");
+                }
+                else
+                {
+                    hitButtonText.SetText("Vur");
+                }
+            }
         }
-        else
+    }
+
+    void FindVictoryPanel()
+    {
+        Canvas canvas = FindObjectOfType<Canvas>();
+        if (canvas != null)
         {
-            hitButtonText.SetText("Vur");
+            foreach (Transform child in canvas.transform)
+            {
+                if (child.name.Equals("Victory", System.StringComparison.OrdinalIgnoreCase) || child.name.Contains("Victory") || child.name.Contains("Win"))
+                {
+                    victoryPanel = child.gameObject;
+                    break;
+                }
+            }
+        }
+    }
+
+    void BindVictoryButtons()
+    {
+        if (victoryPanel != null)
+        {
+            Button[] buttons = victoryPanel.GetComponentsInChildren<Button>(true);
+            foreach (var btn in buttons)
+            {
+                if (btn.name.Contains("Restart"))
+                {
+                    btn.onClick.RemoveListener(RestartGame);
+                    btn.onClick.AddListener(RestartGame);
+                }
+                else if (btn.name.Contains("Home"))
+                {
+                    btn.onClick.RemoveListener(ReturnToMainMenu);
+                    btn.onClick.AddListener(ReturnToMainMenu);
+                }
+            }
         }
     }
 
