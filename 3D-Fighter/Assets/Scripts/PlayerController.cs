@@ -101,11 +101,71 @@ public class PlayerController : MonoBehaviour
     private bool isCastingUlti = false;
     public bool IsCastingUlti => isCastingUlti;
 
+    [Header("Ulti Hands Efekti")]
+    [Tooltip("Ulti sırasında doğacak Hands nesnesi (Assets/Fighter Animation/Hands.fbx)")]
+    [SerializeField] private GameObject handsPrefab;
+    [Tooltip("Ulti sırasında doğacak el sayısı")]
+    [SerializeField] private int ultiHandsCount = 10;
+    [Tooltip("Eller arasındaki doğma gecikmesi (saniye)")]
+    [SerializeField] private float ultiHandsSpawnInterval = 0.12f;
+    [Tooltip("Ellerin doğacağı başlangıç Y yüksekliği (Zemin: 0)")]
+    [SerializeField] private float ultiHandsSpawnY = 0f;
+    [Tooltip("Ellerin yok olacağı hedef Y yüksekliği (3.33f)")]
+    [SerializeField] private float ultiHandsTargetY = 3.33f;
+    [Tooltip("Ellerin yukarı çıkış hızı")]
+    [SerializeField] private float ultiHandsSpeed = 3.5f;
+    [Tooltip("X ekseni minimum doğma konumu")]
+    [SerializeField] private float ultiHandsMinX = -2.5f;
+    [Tooltip("X ekseni maksimum doğma konumu")]
+    [SerializeField] private float ultiHandsMaxX = -0.33f;
+    [Tooltip("Z ekseni minimum doğma konumu")]
+    [SerializeField] private float ultiHandsMinZ = 1f;
+    [Tooltip("Z ekseni maksimum doğma konumu")]
+    [SerializeField] private float ultiHandsMaxZ = 4f;
+    [Tooltip("Doğan ellerin rotasyonu")]
+    [SerializeField] private Vector3 ultiHandsRotation = Vector3.zero;
+
+    private Coroutine ultiHandsCoroutine;
+
+    [Header("Ulti Ses Efektleri")]
+    [Tooltip("Ulti devreye girdiğinde ilk çalınacak ses (Assets/Sounds/GÖKTE NE VAR.mp3)")]
+    [SerializeField] private AudioClip ultiSoundClip;
+    [Tooltip("İlk sesin şiddeti (0 ile 1 arası)")]
+    [Range(0f, 1f)]
+    [SerializeField] private float ultiSoundVolume = 1f;
+
+    [Tooltip("İlk ses bittikten sonra çalınacak yumruk sesi (Assets/Sounds/YUMRUK.mp3)")]
+    [SerializeField] private AudioClip ultiPunchSoundClip;
+    [Tooltip("Yumruk sesinin şiddeti (0 ile 1 arası)")]
+    [Range(0f, 1f)]
+    [SerializeField] private float ultiPunchSoundVolume = 1f;
+    [Tooltip("İlk ses bittikten sonra yumruk sesinden önce eklenebilecek gecikme (saniye)")]
+    [SerializeField] private float punchSoundDelay = 0f;
+
+    [Tooltip("Sesin çalınacağı AudioSource bileşeni (Boş bırakılırsa otomatik eklenir)")]
+    [SerializeField] private AudioSource playerAudioSource;
+
+    private Coroutine ultiSoundCoroutine;
+
     [SerializeField] Image playerHealthBar;
 
     void Awake()
     {
         StartCoroutine(WaitForUlti());
+#if UNITY_EDITOR
+        if (handsPrefab == null)
+        {
+            handsPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Fighter Animation/Hands.fbx");
+        }
+        if (ultiSoundClip == null)
+        {
+            ultiSoundClip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Sounds/GÖKTE NE VAR.mp3");
+        }
+        if (ultiPunchSoundClip == null)
+        {
+            ultiPunchSoundClip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Sounds/YUMRUK.mp3");
+        }
+#endif
     }
     void Start()
     {
@@ -497,6 +557,9 @@ public class PlayerController : MonoBehaviour
 
         Debug.Log("<color=magenta>[ULTİ DEVREYE GİRDİ!]</color> Oyuncu Ulti animasyonunu başlattı!");
 
+        // Ulti ses dizisini (GÖKTE NE VAR.mp3 ardından YUMRUK.mp3) sadece 1 kez çal
+        PlayUltiSoundSequence();
+
         FaceOpponentOnPunch();
 
         if (playerAnim != null)
@@ -507,8 +570,88 @@ public class PlayerController : MonoBehaviour
         StartCoroutine(UltiRoutine());
     }
 
+    /// <summary>
+    /// AudioSource bileşenini hazırlar. Yoksa otomatik ekler.
+    /// </summary>
+    private void EnsureAudioSource()
+    {
+        if (playerAudioSource == null)
+        {
+            playerAudioSource = GetComponent<AudioSource>();
+            if (playerAudioSource == null)
+            {
+                playerAudioSource = gameObject.AddComponent<AudioSource>();
+                playerAudioSource.playOnAwake = false;
+                playerAudioSource.loop = false;
+                playerAudioSource.spatialBlend = 0f; // 2D net ses
+            }
+        }
+    }
+
+    /// <summary>
+    /// Ulti devreye girdiğinde önce 'GÖKTE NE VAR.mp3' sesini, o bittikten hemen sonra
+    /// 'YUMRUK.mp3' sesini loop olmadan 1'er kez çalar.
+    /// </summary>
+    private void PlayUltiSoundSequence()
+    {
+        if (ultiSoundCoroutine != null)
+        {
+            StopCoroutine(ultiSoundCoroutine);
+        }
+        ultiSoundCoroutine = StartCoroutine(UltiSoundSequenceRoutine());
+    }
+
+    private IEnumerator UltiSoundSequenceRoutine()
+    {
+#if UNITY_EDITOR
+        if (ultiSoundClip == null)
+        {
+            ultiSoundClip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Sounds/GÖKTE NE VAR.mp3");
+        }
+        if (ultiPunchSoundClip == null)
+        {
+            ultiPunchSoundClip = UnityEditor.AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Sounds/YUMRUK.mp3");
+        }
+#endif
+        EnsureAudioSource();
+
+        // 1. "GÖKTE NE VAR.mp3" sesini çal
+        if (ultiSoundClip != null)
+        {
+            playerAudioSource.PlayOneShot(ultiSoundClip, ultiSoundVolume);
+            Debug.Log("<color=yellow>[ULTİ SESİ]</color> 'GÖKTE NE VAR.mp3' çalındı. Süre: " + ultiSoundClip.length + "s");
+
+            // İlk sesin tamamlanmasını bekle
+            yield return new WaitForSeconds(ultiSoundClip.length);
+        }
+
+        // İsteğe bağlı ek gecikme
+        if (punchSoundDelay > 0f)
+        {
+            yield return new WaitForSeconds(punchSoundDelay);
+        }
+
+        // 2. Ardından "YUMRUK.mp3" sesini çal
+        if (ultiPunchSoundClip != null)
+        {
+            playerAudioSource.PlayOneShot(ultiPunchSoundClip, ultiPunchSoundVolume);
+            Debug.Log("<color=red>[ULTİ SESİ]</color> 'YUMRUK.mp3' çalındı!");
+        }
+        else
+        {
+            Debug.LogWarning("[PlayerController] ultiPunchSoundClip bulunamadı! 'Assets/Sounds/YUMRUK.mp3' dosyasını kontrol ediniz.");
+        }
+    }
+
     IEnumerator UltiRoutine()
     {
+        // Ulti sırasında Fighter Animation altındaki Hands öğesinden 10 el doğur ve yukarı hareket ettir
+        if (ultiHandsCoroutine != null)
+        {
+            StopCoroutine(ultiHandsCoroutine);
+        }
+        ultiHandsCoroutine = StartCoroutine(SpawnUltiHandsRoutine());
+
         // 1. Öne doğru hamle
         float stepDuration = 0.20f;
         if (punchStepDistance > 0f)
@@ -563,6 +706,52 @@ public class PlayerController : MonoBehaviour
 
         // 5. Cooldown süresini başlat
         StartCoroutine(WaitForUlti());
+    }
+
+    /// <summary>
+    /// Ulti animasyonu oynarken Fighter Animation altındaki Hands modelinden
+    /// belirtilen koordinatlarda aralıklı olarak 10 adet el doğurur.
+    /// </summary>
+    IEnumerator SpawnUltiHandsRoutine()
+    {
+#if UNITY_EDITOR
+        if (handsPrefab == null)
+        {
+            handsPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Fighter Animation/Hands.fbx");
+        }
+#endif
+        if (handsPrefab == null)
+        {
+            Debug.LogWarning("[PlayerController] handsPrefab atanmamış ve 'Assets/Fighter Animation/Hands.fbx' bulunamadı!");
+            yield break;
+        }
+
+        for (int i = 0; i < ultiHandsCount; i++)
+        {
+            // Kullanıcının belirttiği koordinatlar: X (-2.5f ile -0.33f), Z (1f ile 4f), Y sabit (0f zemin)
+            float randX = Random.Range(ultiHandsMinX, ultiHandsMaxX);
+            float randZ = Random.Range(ultiHandsMinZ, ultiHandsMaxZ);
+            Vector3 spawnPos = new Vector3(randX, ultiHandsSpawnY, randZ);
+
+            Quaternion spawnRot = Quaternion.Euler(ultiHandsRotation);
+            GameObject handObj = Instantiate(handsPrefab, spawnPos, spawnRot);
+            handObj.SetActive(true);
+
+            // UltiHandEffect bileşeni ile hedef Y'ye doğru hareket eder ve ulaştığında yok olur
+            UltiHandEffect effect = handObj.GetComponent<UltiHandEffect>();
+            if (effect == null)
+            {
+                effect = handObj.AddComponent<UltiHandEffect>();
+            }
+            effect.Initialize(spawnPos.y, ultiHandsTargetY, ultiHandsSpeed);
+
+            Debug.Log($"<color=magenta>[ULTİ HANDS]</color> El #{i + 1}/{ultiHandsCount} spawnlandı! Konum: {spawnPos}, Hedef Y: {ultiHandsTargetY}, Hız: {ultiHandsSpeed}");
+
+            if (ultiHandsSpawnInterval > 0f)
+            {
+                yield return new WaitForSeconds(ultiHandsSpawnInterval);
+            }
+        }
     }
 
     bool CheckUltiContact()
@@ -1120,6 +1309,16 @@ public class PlayerController : MonoBehaviour
         StopCoroutine(nameof(PunchRoutine));
         StopCoroutine(nameof(UppercutRoutine));
         StopCoroutine(nameof(UltiRoutine));
+        if (ultiHandsCoroutine != null)
+        {
+            StopCoroutine(ultiHandsCoroutine);
+            ultiHandsCoroutine = null;
+        }
+        if (ultiSoundCoroutine != null)
+        {
+            StopCoroutine(ultiSoundCoroutine);
+            ultiSoundCoroutine = null;
+        }
 
         Debug.Log("<color=red>[OYUNCU NAKAVT OLDU!]</color>");
 
