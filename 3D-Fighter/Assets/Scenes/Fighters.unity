@@ -12862,7 +12862,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7924115823794696023, guid: ed4ef4015b4111c4089d9d472b2b11fa, type: 3}
       propertyPath: maxPunchRange
-      value: 100
+      value: 25
       objectReference: {fileID: 0}
     - target: {fileID: 7924115823794696023, guid: ed4ef4015b4111c4089d9d472b2b11fa, type: 3}
       propertyPath: ultiSoundClip

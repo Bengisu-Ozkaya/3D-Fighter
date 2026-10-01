@@ -18,7 +18,7 @@ public class PlayerController : MonoBehaviour
     [SerializeField] float punchRadius = 0.20f;
 
     [Tooltip("Yumruğun rakibe ulaşabileceği azami mesafe (metre). Bu mesafeden uzaktaki rakiplere hasar verilemez.")]
-    [SerializeField] float maxPunchRange = 1.25f;
+    [SerializeField] float maxPunchRange = 25f;
 
     [Tooltip("Yumruk atarken karakterin ileriye doğru attığı doğal boks adımı mesafesi (metre)")]
     [SerializeField] float punchStepDistance = 0.08f;
@@ -79,6 +79,22 @@ public class PlayerController : MonoBehaviour
     bool isPunching = false;
     bool isPunchActive = false;
     bool hasHitCurrentPunch = false;
+
+    private bool isHitStunned = false;
+    public bool IsHitStunned => isHitStunned;
+
+    private Coroutine punchRoutine = null;
+    private Coroutine uppercutRoutine = null;
+    private Coroutine hitStunRoutine = null;
+    private float nextPunchAvailableTime = 0f;
+
+    [Header("Vuruş Zamanlamaları (Windup & Cooldown)")]
+    [Tooltip("Yumruğun temas anından önceki savurma / uzanma gecikmesi (saniye).")]
+    [SerializeField] private float punchWindupTime = 0.14f;
+    [Tooltip("Aparkatın temas anından önceki yükselme gecikmesi (saniye).")]
+    [SerializeField] private float uppercutWindupTime = 0.18f;
+    [Tooltip("Yumruktan sonra yeni yumruk atılabilmesi için bekleme süresi")]
+    [SerializeField] private float punchCooldown = 0.05f;
 
     // 0 GC Bellek optimizasyonu
     private readonly Collider[] hitColliders = new Collider[6];
@@ -239,7 +255,7 @@ public class PlayerController : MonoBehaviour
 
         // Kararlı yakın dövüş mesafesi kalibrasyonu
         if (punchRadius > 0.22f) punchRadius = 0.20f;
-        if (maxPunchRange <= 0f || maxPunchRange > 1.4f) maxPunchRange = 1.25f;
+        if (maxPunchRange <= 0f) maxPunchRange = 25f;
 
         // StartPanel kontrolü: Eğer startPanel sahnede yoksa veya kapalıysa ve oyun başladıysa ulti cooldown başlat
         if (startPanel == null)
@@ -297,15 +313,26 @@ public class PlayerController : MonoBehaviour
 
     void Update()
     {
-        // Oyuncu öldüyse veya tüm dalgalar bittiyse (oyun tamamlandıysa) hareket edip yumruk atamasın
-        if (isDead || isGameCompleted) return;
+        // Oyuncu öldüyse, ayağa kalkıyorsa veya tüm dalgalar bittiyse hareket edip yumruk atamasın
+        if (isDead || isGameCompleted || isStandingUp) return;
+
+        // Düşmandan darbe alındığında (Hit Stun): Hasar alma animasyonu oynar, hareket ve vuruş kilitlenir!
+        if (isHitStunned)
+        {
+            if (isBlocking)
+            {
+                isBlocking = false;
+            }
+            FaceOpponentOnPunch();
+            return;
+        }
 
         // 1. Blok Kontrolü (Klavye Space Tuşu veya Mobil Blok Butonu)
         bool wantBlock = Input.GetKey(KeyCode.Space) || (playerDoBlock == 1);
 
         if (wantBlock)
         {
-            if (!isBlocking && !isPunching)
+            if (!isBlocking && !isPunching && !isHitStunned)
             {
                 isBlocking = true;
                 if (playerAnim != null)
@@ -319,7 +346,7 @@ public class PlayerController : MonoBehaviour
             if (isBlocking)
             {
                 isBlocking = false;
-                if (playerAnim != null)
+                if (playerAnim != null && !isHitStunned)
                 {
                     playerAnim.CrossFadeInFixedTime("Idle", 0.15f);
                 }
@@ -338,17 +365,16 @@ public class PlayerController : MonoBehaviour
 
         if (Input.GetKeyDown(KeyCode.R))
         {
-            if (!usingUlti && !isPunching && !isBlocking && !isDead && !isGameCompleted && !isStandingUp)
+            if (!usingUlti && !isPunching && !isBlocking && !isDead && !isGameCompleted && !isStandingUp && !isHitStunned)
             {
                 ExecuteUlti();
             }
         }
 
         // 3. Aparkat Tuşu ("E" Tuşu - 20 Can Hasarı)
-
         if (Input.GetKeyDown(KeyCode.E))
         {
-            if (!isPunching)
+            if (!isPunching && !isHitStunned)
             {
                 ExecuteUppercut();
             }
@@ -357,7 +383,7 @@ public class PlayerController : MonoBehaviour
         // 4. Normal Yumruk Tuşu (F veya Sol Tık)
         if (Input.GetKeyDown(KeyCode.F))
         {
-            if (!isPunching)
+            if (!isPunching && !isHitStunned)
             {
                 ExecutePunch();
             }
@@ -432,8 +458,8 @@ public class PlayerController : MonoBehaviour
 
     void HandleMovement()
     {
-        // Yumruk atarken hareket etmesin ve yönünü doğrudan rakibe kilitlesin
-        if (isPunching)
+        // Yumruk atarken veya hasar sersemlemesindeyken hareket etmesin ve yönünü doğrudan rakibe kilitlesin
+        if (isPunching || isHitStunned)
         {
             FaceOpponentOnPunch();
             return;
@@ -553,7 +579,9 @@ public class PlayerController : MonoBehaviour
 
     void ExecutePunch()
     {
-        if (isPunching) return;
+        if (isPunching || isHitStunned || isBlocking || isDead || isGameCompleted || isStandingUp) return;
+        if (Time.time < nextPunchAvailableTime) return;
+
         isPunching = true;
         hasHitCurrentPunch = false;
 
@@ -565,6 +593,8 @@ public class PlayerController : MonoBehaviour
 
         if (playerAnim != null)
         {
+            playerAnim.ResetTrigger("PunchLeft");
+            playerAnim.ResetTrigger("PunchRight");
             playerAnim.SetTrigger(triggerName);
         }
 
@@ -572,7 +602,8 @@ public class PlayerController : MonoBehaviour
         isPunchRight = !isPunchRight;
 
         // Boks adımı ve vuruş kontrolünü başlat
-        StartCoroutine(PunchRoutine(fistIndex));
+        if (punchRoutine != null) StopCoroutine(punchRoutine);
+        punchRoutine = StartCoroutine(PunchRoutine(fistIndex));
     }
 
     /// <summary>
@@ -580,7 +611,9 @@ public class PlayerController : MonoBehaviour
     /// </summary>
     void ExecuteUppercut()
     {
-        if (isPunching) return;
+        if (isPunching || isHitStunned || isBlocking || isDead || isGameCompleted || isStandingUp) return;
+        if (Time.time < nextPunchAvailableTime) return;
+
         isPunching = true;
         hasHitCurrentPunch = false;
 
@@ -588,15 +621,16 @@ public class PlayerController : MonoBehaviour
 
         if (playerAnim != null)
         {
-            playerAnim.CrossFadeInFixedTime("Uppercut", 0.12f);
+            playerAnim.CrossFadeInFixedTime("Uppercut", 0.10f);
         }
 
-        StartCoroutine(UppercutRoutine());
+        if (uppercutRoutine != null) StopCoroutine(uppercutRoutine);
+        uppercutRoutine = StartCoroutine(UppercutRoutine());
     }
 
     void ExecuteUlti()
     {
-        if (usingUlti || isPunching || isBlocking || isDead || isGameCompleted || isStandingUp) return;
+        if (usingUlti || isPunching || isBlocking || isDead || isGameCompleted || isStandingUp || isHitStunned) return;
         usingUlti = true;
         isPunching = true;
         isCastingUlti = true;
@@ -1041,7 +1075,7 @@ public class PlayerController : MonoBehaviour
     IEnumerator UppercutRoutine()
     {
         // 1. Öne doğru boksör hamlesi
-        float stepDuration = 0.16f;
+        float stepDuration = 0.14f;
         if (punchStepDistance > 0f)
         {
             float stepTimer = 0f;
@@ -1063,9 +1097,15 @@ public class PlayerController : MonoBehaviour
             }
         }
 
-        // 2. Aparkatın yükselme ve temas penceresi (0.15s - 0.45s arası her karede temas ara)
+        // 2. Aparkat kolunun yükselme ve savrulma hazırlığı (Windup)
+        if (uppercutWindupTime > stepDuration)
+        {
+            yield return new WaitForSeconds(uppercutWindupTime - stepDuration);
+        }
+
+        // 3. Aparkatın zirveye ulaştığı temas penceresi
         float activeTimer = 0f;
-        float uppercutActiveDuration = 0.35f;
+        float uppercutActiveDuration = 0.25f;
         while (activeTimer < uppercutActiveDuration)
         {
             if (hasHitCurrentPunch) break;
@@ -1076,15 +1116,17 @@ public class PlayerController : MonoBehaviour
             yield return null;
         }
 
-        // 3. Kolun geri çekilmesi ve garda dönüş
-        yield return new WaitForSeconds(0.45f);
+        // 4. Kolun geri çekilmesi ve garda dönüş
+        yield return new WaitForSeconds(0.35f);
 
-        if (playerAnim != null && !isDead && !isGameCompleted)
+        if (playerAnim != null && !isDead && !isHitStunned && !isGameCompleted)
         {
-            playerAnim.CrossFadeInFixedTime("Idle", 0.18f);
+            playerAnim.CrossFadeInFixedTime("Idle", 0.15f);
         }
 
+        nextPunchAvailableTime = Time.time + punchCooldown;
         isPunching = false;
+        uppercutRoutine = null;
     }
 
     void CheckPhysicalUppercutContact()
@@ -1318,6 +1360,10 @@ public class PlayerController : MonoBehaviour
         isGameCompleted = false;
         isPunching = false;
         isPunchActive = false;
+        isHitStunned = false;
+        punchRoutine = null;
+        uppercutRoutine = null;
+        hitStunRoutine = null;
         isBlocking = false;
         playerDoBlock = 0;
         hasHitCurrentPunch = false;
@@ -1359,8 +1405,8 @@ public class PlayerController : MonoBehaviour
 
     IEnumerator PunchRoutine(int fistIndex)
     {
-        float stepDuration = 0.16f;
-        // 1. Boksör Hamlesi (Step-in): Yumruk atarken öne doğru hafif ve doğal bir adım at (SmoothStep ile sarsıntısız)
+        float stepDuration = 0.14f;
+        // 1. Boksör Hamlesi (Step-in): Yumruk atarken öne doğru hafif ve doğal bir adım at
         if (punchStepDistance > 0f)
         {
             float stepTimer = 0f;
@@ -1382,14 +1428,19 @@ public class PlayerController : MonoBehaviour
             }
         }
 
-        // 2. Yumruk uzandığında temas kontrol penceresini aç
+        // 2. Yumruk uzanma / savrulma gecikmesi (Windup - animasyonun hedefe doğru ilerlemesi)
+        if (punchWindupTime > stepDuration)
+        {
+            yield return new WaitForSeconds(punchWindupTime - stepDuration);
+        }
+
+        // 3. Yumruk temas arama penceresi
         isPunchActive = true;
         float activeTimer = 0f;
 
-        // Animasyonun uzanma ve zirve anı boyunca her karede temas kontrol et
         while (activeTimer < punchActiveDuration)
         {
-            if (hasHitCurrentPunch) break; // Zaten temas ettiyse mükerrer hasarı engelle
+            if (hasHitCurrentPunch) break;
 
             CheckPhysicalFistContact(fistIndex);
 
@@ -1399,16 +1450,23 @@ public class PlayerController : MonoBehaviour
 
         isPunchActive = false;
 
-        // 3. Kolun geri çekilmesi ve boksörün garda dönüş süresi (Animasyonun bitmesini bekle)
-        float totalElapsed = (punchStepDistance > 0f ? stepDuration : 0f) + activeTimer;
+        // 4. Kolun geri çekilmesi ve boksörün garda dönüş süresi
+        float totalElapsed = Mathf.Max(punchWindupTime, stepDuration) + activeTimer;
         float remainingDuration = punchDuration - totalElapsed;
         if (remainingDuration > 0f)
         {
             yield return new WaitForSeconds(remainingDuration);
         }
 
-        // Yumruk tamamen bitti, artık sıradaki yumruk atılabilir!
+        if (playerAnim != null && !isDead && !isHitStunned && !isGameCompleted)
+        {
+            playerAnim.CrossFadeInFixedTime("Idle", 0.12f);
+        }
+
+        // Yumruk tamamen bitti
+        nextPunchAvailableTime = Time.time + punchCooldown;
         isPunching = false;
+        punchRoutine = null;
     }
 
     /// <summary>
@@ -1442,6 +1500,32 @@ public class PlayerController : MonoBehaviour
                         hitEnemy.TakeDamage(punchDamage);
                         enemyController = hitEnemy; // Odaklanılan düşmanı son vurulan düşman yap
                         return;
+                    }
+                }
+            }
+        }
+
+        // 2. Menzil Kontrolü: Oyuncunun önündeki canlı düşman maxPunchRange içindeyse vur
+        if (!hasHitCurrentPunch)
+        {
+            EnemyController targetEnemy = (enemyController != null && !enemyController.IsDead)
+                ? enemyController
+                : GetClosestLivingEnemy();
+
+            if (targetEnemy != null && !targetEnemy.IsDead)
+            {
+                float distToEnemy = Vector3.Distance(transform.position, targetEnemy.transform.position);
+                if (distToEnemy <= maxPunchRange)
+                {
+                    Vector3 dirToEnemy = (targetEnemy.transform.position - transform.position).normalized;
+                    dirToEnemy.y = 0f;
+                    if (Vector3.Dot(transform.forward, dirToEnemy) >= 0.20f)
+                    {
+                        hasHitCurrentPunch = true;
+                        isPunchActive = false;
+                        targetEnemy.TakeDamage(punchDamage);
+                        enemyController = targetEnemy;
+                        Debug.Log($"<color=green>[YUMRUK İSABET ETTİ!]</color> {targetEnemy.name} düşmanına {punchDamage} hasar verildi (Mesafe: {distToEnemy:F1}m)!");
                     }
                 }
             }
@@ -1506,16 +1590,16 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        isPunching = false;
-        isPunchActive = false;
-        StopCoroutine(nameof(PunchRoutine));
-        StopCoroutine(nameof(UppercutRoutine));
+        // SALDIRIYI KES (INTERRUPT): Düşman önce vurduysa oyuncunun vuruşu İPTAL EDİLİR!
+        InterruptPlayerAttack();
 
-        StartCoroutine(WaitPunch());
         playerHealth -= damageAmount;
 
-        //Can Barı
-        playerHealthBar.fillAmount = playerHealth / maxPlayerHealth;
+        // Can Barı
+        if (playerHealthBar != null && maxPlayerHealth > 0f)
+        {
+            playerHealthBar.fillAmount = playerHealth / maxPlayerHealth;
+        }
 
         Debug.Log($"<color=cyan>[OYUNCU DARBE ALDI]</color> Kalan Can: {playerHealth} (Aparkat: {isUppercut})");
 
@@ -1533,21 +1617,77 @@ public class PlayerController : MonoBehaviour
         }
         else
         {
-            if (playerAnim != null)
+            // HASAR ALMA ANİMASYONU VE DARBE SERSEMLEMESİ (HIT STUN):
+            // Düşman vurduğunda oyuncu hasar alma animasyonunu oynar ve sersemleme bitene kadar vuruş yapamaz!
+            if (hitStunRoutine != null)
             {
-                if (isUppercut || damageAmount >= 20f)
-                {
-                    playerAnim.ResetTrigger("GetHit");
-                    playerAnim.SetTrigger("GetHeadHit");
-                    playerAnim.CrossFadeInFixedTime("Head Hit", 0.08f);
-                }
-                else
-                {
-                    playerAnim.ResetTrigger("GetHeadHit");
-                    playerAnim.SetTrigger("GetHit");
-                }
+                StopCoroutine(hitStunRoutine);
+            }
+            hitStunRoutine = StartCoroutine(PlayerHitStunRoutine(isUppercut || damageAmount >= 20f));
+        }
+    }
+
+    /// <summary>
+    /// Oyuncunun devam eden herhangi bir saldırısını (yumruk/aparkat) derhal iptal eder
+    /// </summary>
+    public void InterruptPlayerAttack()
+    {
+        isPunching = false;
+        isPunchActive = false;
+        hasHitCurrentPunch = false;
+
+        if (punchRoutine != null)
+        {
+            StopCoroutine(punchRoutine);
+            punchRoutine = null;
+        }
+
+        if (uppercutRoutine != null)
+        {
+            StopCoroutine(uppercutRoutine);
+            uppercutRoutine = null;
+        }
+
+        if (playerAnim != null)
+        {
+            playerAnim.ResetTrigger("PunchLeft");
+            playerAnim.ResetTrigger("PunchRight");
+        }
+    }
+
+    private IEnumerator PlayerHitStunRoutine(bool isHeavyHit)
+    {
+        isHitStunned = true;
+
+        if (playerAnim != null)
+        {
+            playerAnim.ResetTrigger("PunchLeft");
+            playerAnim.ResetTrigger("PunchRight");
+
+            if (isHeavyHit)
+            {
+                playerAnim.ResetTrigger("GetHit");
+                playerAnim.SetTrigger("GetHeadHit");
+                playerAnim.CrossFadeInFixedTime("Head Hit", 0.06f);
+            }
+            else
+            {
+                playerAnim.ResetTrigger("GetHeadHit");
+                playerAnim.SetTrigger("GetHit");
+                playerAnim.CrossFadeInFixedTime("Hit", 0.06f);
             }
         }
+
+        float stunDuration = isHeavyHit ? 0.55f : 0.40f;
+        yield return new WaitForSeconds(stunDuration);
+
+        if (!isDead && !isGameCompleted && playerAnim != null)
+        {
+            playerAnim.CrossFadeInFixedTime("Idle", 0.15f);
+        }
+
+        isHitStunned = false;
+        hitStunRoutine = null;
     }
 
     void Die()
@@ -1555,13 +1695,17 @@ public class PlayerController : MonoBehaviour
         if (isDead) return;
         isDead = true;
         isStandingUp = false;
+        isHitStunned = false;
 
-        isPunching = false;
-        isPunchActive = false;
+        InterruptPlayerAttack();
+        if (hitStunRoutine != null)
+        {
+            StopCoroutine(hitStunRoutine);
+            hitStunRoutine = null;
+        }
+
         isBlocking = false;
         playerDoBlock = 0;
-        StopCoroutine(nameof(PunchRoutine));
-        StopCoroutine(nameof(UppercutRoutine));
         StopCoroutine(nameof(UltiRoutine));
         if (ultiHandsCoroutine != null)
         {
@@ -1682,6 +1826,10 @@ public class PlayerController : MonoBehaviour
         isStandingUp = false;
         isPunching = false;
         isPunchActive = false;
+        isHitStunned = false;
+        punchRoutine = null;
+        uppercutRoutine = null;
+        hitStunRoutine = null;
         isBlocking = false;
         playerDoBlock = 0;
         hasHitCurrentPunch = false;
@@ -1764,6 +1912,10 @@ public class PlayerController : MonoBehaviour
         // Oyuncu tamamen ayağa kalktı; durumları sıfırla, collider'ı ve kontrolleri aç
         isStandingUp = false;
         isDead = false;
+        isHitStunned = false;
+        punchRoutine = null;
+        uppercutRoutine = null;
+        hitStunRoutine = null;
 
         Collider col = GetComponent<Collider>();
         if (col != null)
@@ -1858,7 +2010,7 @@ public class PlayerController : MonoBehaviour
 
     public void PunchButton()
     {
-        if (!isPunching)
+        if (!isPunching && !isHitStunned)
         {
             if (!usingUlti)
             {
@@ -1873,7 +2025,7 @@ public class PlayerController : MonoBehaviour
 
     public void UltiButton()
     {
-        if (!usingUlti && !isPunching && !isBlocking && !isDead)
+        if (!usingUlti && !isPunching && !isBlocking && !isDead && !isHitStunned)
         {
             ExecuteUlti();
         }
@@ -1881,7 +2033,7 @@ public class PlayerController : MonoBehaviour
 
     public void UppercutButton()
     {
-        if (!isPunching)
+        if (!isPunching && !isHitStunned)
         {
             ExecuteUppercut();
         }
@@ -1889,6 +2041,7 @@ public class PlayerController : MonoBehaviour
 
     public void Blocking(int doBlock)
     {
+        if (isHitStunned && doBlock != 0) return;
         this.playerDoBlock = doBlock;
     }
 }

@@ -59,6 +59,15 @@ public class EnemyController : MonoBehaviour
     private bool isPendingUltiDeath = false;
     public bool IsPendingUltiDeath => isPendingUltiDeath;
 
+    private bool isAttacking = false;
+    public bool IsAttacking => isAttacking;
+
+    private bool isTakingHit = false;
+    public bool IsTakingHit => isTakingHit;
+
+    private Coroutine currentAttackCoroutine = null;
+    private Coroutine hitStunCoroutine = null;
+
     private int consecutiveHitsTaken = 0;
     private float lastHitTakenTime = 0f;
     private float nextBlockAvailableTime = 0f;
@@ -144,15 +153,24 @@ public class EnemyController : MonoBehaviour
     {
         if (dead)
         {
+            StopAttack();
             StopBlocking();
+            if (hitStunCoroutine != null)
+            {
+                StopCoroutine(hitStunCoroutine);
+                hitStunCoroutine = null;
+            }
+            isTakingHit = false;
         }
 
         if (enemyAnimator != null)
         {
+            enemyAnimator.SetBool("rightMove", false);
+            enemyAnimator.SetBool("leftMove", false);
             enemyAnimator.SetBool("isDeadEnemy", dead);
             if (!dead)
             {
-                enemyAnimator.CrossFadeInFixedTime("Idle", 0.2f);
+                enemyAnimator.CrossFadeInFixedTime("Idle", 0.15f);
             }
         }
     }
@@ -212,9 +230,14 @@ public class EnemyController : MonoBehaviour
             transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(lookDirection), Time.deltaTime * 6f);
         }
 
-        // Eğer düşman şu an blok yapıyorsa veya Ulti sonrası ölüm gecikmesindeyse: hareket edip saldırmasın
-        if (isBlocking || isPendingUltiDeath)
+        // Eğer düşman şu an blok yapıyorsa, darbe alıyorsa, saldırıdaysa veya Ulti sonrası ölüm gecikmesindeyse: hareket edip saldırmasın
+        if (isBlocking || isTakingHit || isPendingUltiDeath || isAttacking)
         {
+            if (enemyAnimator != null)
+            {
+                enemyAnimator.SetBool("rightMove", false);
+                enemyAnimator.SetBool("leftMove", false);
+            }
             ResolveOverlaps();
             return;
         }
@@ -225,6 +248,11 @@ public class EnemyController : MonoBehaviour
         // 3. Eğer oyuncu saldırı mesafesinden uzaktaysa ona doğru yürü
         if (distance > attackRange)
         {
+            if (enemyAnimator != null)
+            {
+                enemyAnimator.SetBool("rightMove", true);
+            }
+
             if (moveSpeed > 0)
             {
                 Vector3 toPlayer = (playerTransform.position - transform.position).normalized;
@@ -240,6 +268,11 @@ public class EnemyController : MonoBehaviour
         }
         else
         {
+            if (enemyAnimator != null)
+            {
+                enemyAnimator.SetBool("rightMove", false);
+            }
+
             // Düşmanlar saldırı mesafesinde olsa bile üst üste binmesinler, hafifçe yana açılsınlar
             if (separationForce.sqrMagnitude > 0.01f)
             {
@@ -251,10 +284,9 @@ public class EnemyController : MonoBehaviour
                 transform.position = sidePos;
             }
 
-            if (Time.time >= nextAttackTime)
+            if (Time.time >= nextAttackTime && !isAttacking && !isTakingHit && !isBlocking)
             {
                 AttackPlayer();
-                nextAttackTime = Time.time + attackCooldown;
             }
         }
 
@@ -335,16 +367,24 @@ public class EnemyController : MonoBehaviour
 
     void AttackPlayer()
     {
+        if (isDead || isTakingHit || isAttacking || isBlocking || isPendingUltiDeath) return;
+        if (playerTransform == null || playerController == null || playerController.IsDead) return;
+
         // 1. Oyuncuya tam cepheden yüzünü dön
-        if (playerTransform != null)
+        Vector3 dir = (playerTransform.position - transform.position).normalized;
+        dir.y = 0f;
+        if (dir != Vector3.zero)
         {
-            Vector3 dir = (playerTransform.position - transform.position).normalized;
-            dir.y = 0f;
-            if (dir != Vector3.zero)
-            {
-                transform.rotation = Quaternion.LookRotation(dir);
-            }
+            transform.rotation = Quaternion.LookRotation(dir);
         }
+
+        if (enemyAnimator != null)
+        {
+            enemyAnimator.SetBool("rightMove", false);
+            enemyAnimator.SetBool("leftMove", false);
+        }
+
+        isAttacking = true;
 
         // Oyuncunun canını kontrol et: Can <= uppercutDamage ise veya dövüş dinamizmi için (%25 şans) aparkat yap
         float playerHealth = playerController != null ? playerController.GetHealth() : 100f;
@@ -358,7 +398,8 @@ public class EnemyController : MonoBehaviour
             {
                 enemyAnimator.CrossFadeInFixedTime("Uppercut", 0.12f);
             }
-            StartCoroutine(DamagePlayerWithDelay(0.35f, true));
+            if (currentAttackCoroutine != null) StopCoroutine(currentAttackCoroutine);
+            currentAttackCoroutine = StartCoroutine(EnemyAttackRoutine(0.35f, true));
         }
         else
         {
@@ -366,61 +407,95 @@ public class EnemyController : MonoBehaviour
             string punchTrigger = Random.value > 0.5f ? "PunchRight" : "PunchLeft";
             if (enemyAnimator != null)
             {
+                enemyAnimator.ResetTrigger("PunchLeft");
+                enemyAnimator.ResetTrigger("PunchRight");
                 enemyAnimator.SetTrigger(punchTrigger);
             }
-            StartCoroutine(DamagePlayerWithDelay(0.35f, false));
+            if (currentAttackCoroutine != null) StopCoroutine(currentAttackCoroutine);
+            currentAttackCoroutine = StartCoroutine(EnemyAttackRoutine(0.30f, false));
         }
     }
 
-    IEnumerator DamagePlayerWithDelay(float delay, bool isFinisherUppercut = false)
+    IEnumerator EnemyAttackRoutine(float windup, bool isUppercut)
     {
-        yield return new WaitForSeconds(delay);
+        yield return new WaitForSeconds(windup);
 
-        // Düşman ölmediyse ve oyuncu hala hayattaysa hasarı uygula
-        if (!isDead && playerTransform != null && playerController != null && !playerController.IsDead)
+        // Darbe yemişse (StopAttack çağrılmışsa), ölmüşse veya oyuncu ölmüşse hasar verme!
+        if (isDead || isTakingHit || isPendingUltiDeath)
         {
-            // Oyuncu ulti kullanırken düşman darbe vuramaz
+            isAttacking = false;
+            yield break;
+        }
+
+        if (playerTransform != null && playerController != null && !playerController.IsDead)
+        {
             if (playerController.IsCastingUlti)
             {
                 Debug.Log("<color=magenta>[DÜŞMAN VURAMADI]</color> Oyuncu Ulti atarken dokunulmaz!");
-                yield break;
-            }
-
-            float currentDistance = Vector3.Distance(transform.position, playerTransform.position);
-            Vector3 dirToPlayer = (playerTransform.position - transform.position).normalized;
-            dirToPlayer.y = 0f;
-            float dot = Vector3.Dot(transform.forward, dirToPlayer);
-
-            // Sadece oyuncu gerçekten vuruş mesafesindeyse (<= maxHitDistance) ve düşman oyuncuya bakıyorsa hasar ver
-            if (currentDistance <= maxHitDistance && dot > 0.35f)
-            {
-                // Aparkat ise uppercutDamage, normal vuruş ise attackDamage uygula
-                float damageToDeal = isFinisherUppercut ? uppercutDamage : attackDamage;
-                playerController.TakeDamage(damageToDeal, isFinisherUppercut);
             }
             else
             {
-                Debug.Log("<color=yellow>[DÜŞMAN ISKALADI]</color> Oyuncu menzil dışına çıktı!");
+                float currentDistance = Vector3.Distance(transform.position, playerTransform.position);
+                Vector3 dirToPlayer = (playerTransform.position - transform.position).normalized;
+                dirToPlayer.y = 0f;
+                float dot = Vector3.Dot(transform.forward, dirToPlayer);
+
+                if (currentDistance <= maxHitDistance && dot > 0.25f)
+                {
+                    float damageToDeal = isUppercut ? uppercutDamage : attackDamage;
+                    playerController.TakeDamage(damageToDeal, isUppercut);
+                }
+                else
+                {
+                    Debug.Log("<color=yellow>[DÜŞMAN ISKALADI]</color> Oyuncu menzil dışına çıktı!");
+                }
             }
         }
 
-        // Aparkat tamamlandıktan sonra düşmanı gard (Idle) pozisyonuna geri döndür
-        if (isFinisherUppercut)
+        // Saldırı sonrası toparlanma süresi (Recovery)
+        float recovery = isUppercut ? 0.50f : 0.35f;
+        yield return new WaitForSeconds(recovery);
+
+        if (!isDead && !isTakingHit && !isBlocking && enemyAnimator != null)
         {
-            yield return new WaitForSeconds(0.65f);
-            if (enemyAnimator != null && !isDead)
-            {
-                enemyAnimator.CrossFadeInFixedTime("Idle", 0.2f);
-            }
+            enemyAnimator.CrossFadeInFixedTime("Idle", 0.15f);
+        }
+
+        isAttacking = false;
+        currentAttackCoroutine = null;
+        nextAttackTime = Time.time + attackCooldown;
+    }
+
+    public void StopAttack()
+    {
+        if (currentAttackCoroutine != null)
+        {
+            StopCoroutine(currentAttackCoroutine);
+            currentAttackCoroutine = null;
+        }
+        isAttacking = false;
+
+        if (enemyAnimator != null)
+        {
+            enemyAnimator.ResetTrigger("PunchLeft");
+            enemyAnimator.ResetTrigger("PunchRight");
         }
     }
 
     // Hasar alma fonksiyonu
     public void TakeDamage(float damageAmount, bool isUppercut = false, bool isUlti = false)
     {
-        StartCoroutine(WaitPunch());
-
         if (isDead) return;
+
+        // OYUNCU ÖNCE VURDUYSA: Düşmanın devam eden saldırısı ANINDA İPTAL EDİLİR!
+        StopAttack();
+
+        // Önceki sersemleme coroutine'ini durdur
+        if (hitStunCoroutine != null)
+        {
+            StopCoroutine(hitStunCoroutine);
+            hitStunCoroutine = null;
+        }
 
         bool fromUlti = isUlti || (playerController != null && playerController.IsCastingUlti);
 
@@ -496,20 +571,42 @@ public class EnemyController : MonoBehaviour
             return; // Düşman gard aldı, GetHit animasyonu Center Block'u ezmesin!
         }
 
-        // 4. Henüz blok tetiklenmediyse (1. darbe ise) darbe animasyonunu oynat
+        // 4. DARBE ANİMASYONU VE SERSEMLEME (HIT STUN):
+        // Düşman darbe aldığında saldırı yapamaz, hareket edemez ve animasyon net şekilde oynatılır
+        hitStunCoroutine = StartCoroutine(EnemyHitStunRoutine(isUppercut || isUlti || damageAmount >= 20f));
+        nextAttackTime = Mathf.Max(nextAttackTime, Time.time + attackCooldown * 0.8f);
+    }
+
+    IEnumerator EnemyHitStunRoutine(bool isHeavy)
+    {
+        isTakingHit = true;
         if (enemyAnimator != null)
         {
-            if (isUppercut || isUlti || damageAmount >= 20f)
+            enemyAnimator.SetBool("rightMove", false);
+            enemyAnimator.SetBool("leftMove", false);
+            if (isHeavy)
             {
                 enemyAnimator.ResetTrigger("GetHit");
                 enemyAnimator.SetTrigger("GetHeadHit");
-                enemyAnimator.CrossFadeInFixedTime("Head Hit", 0.08f);
+                enemyAnimator.CrossFadeInFixedTime("Head Hit", 0.06f);
             }
             else
             {
                 enemyAnimator.ResetTrigger("GetHeadHit");
                 enemyAnimator.SetTrigger("GetHit");
+                enemyAnimator.CrossFadeInFixedTime("Hit", 0.06f);
             }
+        }
+
+        float stunDuration = isHeavy ? 0.60f : 0.42f;
+        yield return new WaitForSeconds(stunDuration);
+
+        isTakingHit = false;
+        hitStunCoroutine = null;
+
+        if (!isDead && !isAttacking && !isBlocking && !isPendingUltiDeath && enemyAnimator != null)
+        {
+            enemyAnimator.CrossFadeInFixedTime("Idle", 0.15f);
         }
     }
 
@@ -660,7 +757,20 @@ public class EnemyController : MonoBehaviour
         isDead = true;
         isPendingUltiDeath = false;
 
+        StopAttack();
         StopBlocking();
+        if (hitStunCoroutine != null)
+        {
+            StopCoroutine(hitStunCoroutine);
+            hitStunCoroutine = null;
+        }
+        isTakingHit = false;
+
+        if (enemyAnimator != null)
+        {
+            enemyAnimator.SetBool("rightMove", false);
+            enemyAnimator.SetBool("leftMove", false);
+        }
 
         Debug.Log($"<color=red>[DÜŞMAN YENİLDİ]</color> {gameObject.name} nakavt oldu!");
 

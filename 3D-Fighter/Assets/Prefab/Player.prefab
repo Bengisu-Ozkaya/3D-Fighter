@@ -133,7 +133,7 @@ MonoBehaviour:
   speed: 2
   rotationSpeed: 14
   punchRadius: 0.28
-  maxPunchRange: 1.25
+  maxPunchRange: 25
   punchStepDistance: 0.08
   punchActiveDuration: 0.5
   punchDuration: 0.55

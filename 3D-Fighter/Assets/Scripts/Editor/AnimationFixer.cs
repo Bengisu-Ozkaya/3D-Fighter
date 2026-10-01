@@ -21,10 +21,14 @@ public class AnimationFixer
         EnsureHeadHitInController("Assets/Fighter Animation/Idle.controller");
         EnsureHeadHitInController("Assets/Fighter Animation/Enemy.controller");
         EnsureUltiInController("Assets/Fighter Animation/Idle.controller");
+        EnsureUppercutInController("Assets/Fighter Animation/Idle.controller");
+        EnsureUppercutInController("Assets/Fighter Animation/Enemy.controller");
+        FixShowPoseInController("Assets/Fighter Animation/Idle.controller");
+        FixShowPoseInController("Assets/Fighter Animation/Enemy.controller");
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
-        Debug.Log("<color=green>[3D Fighter]</color> Yumruk doğrultuları ve Head Hit animasyon ayarları başarıyla güncellendi!");
+        Debug.Log("<color=green>[3D Fighter]</color> Yumruk doğrultuları, Head Hit ve animasyon geçiş ayarları başarıyla güncellendi!");
     }
 
     private static void ConfigureClip(string path, float orientationOffsetY)
@@ -141,6 +145,84 @@ public class AnimationFixer
             if (ultiClip != null)
             {
                 ultiState.motion = ultiClip;
+            }
+        }
+
+        EditorUtility.SetDirty(controller);
+    }
+
+    private static void EnsureUppercutInController(string controllerPath)
+    {
+        AnimatorController controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(controllerPath);
+        if (controller == null) return;
+
+        var sm = controller.layers[0].stateMachine;
+        AnimatorState uppercutState = null;
+        AnimatorState idleState = null;
+
+        foreach (var cs in sm.states)
+        {
+            if (cs.state.name == "Uppercut") uppercutState = cs.state;
+            if (cs.state.name == "Idle") idleState = cs.state;
+        }
+
+        if (uppercutState != null && idleState != null)
+        {
+            bool hasIdleTransition = false;
+            foreach (var t in uppercutState.transitions)
+            {
+                if (t.destinationState == idleState)
+                {
+                    hasIdleTransition = true;
+                    break;
+                }
+            }
+
+            if (!hasIdleTransition)
+            {
+                var toIdle = uppercutState.AddTransition(idleState);
+                toIdle.hasExitTime = true;
+                toIdle.exitTime = 0.85f;
+                toIdle.duration = 0.15f;
+                toIdle.hasFixedDuration = true;
+                toIdle.canTransitionToSelf = true;
+            }
+        }
+
+        EditorUtility.SetDirty(controller);
+    }
+
+    private static void FixShowPoseInController(string controllerPath)
+    {
+        AnimatorController controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(controllerPath);
+        if (controller == null) return;
+
+        var sm = controller.layers[0].stateMachine;
+        AnimatorState showPoseState = null;
+        AnimatorState idleState = null;
+
+        foreach (var cs in sm.states)
+        {
+            if (cs.state.name == "Show Pose") showPoseState = cs.state;
+            if (cs.state.name == "Idle") idleState = cs.state;
+        }
+
+        if (showPoseState != null && idleState != null)
+        {
+            foreach (var t in showPoseState.transitions)
+            {
+                if (t.destinationState == idleState)
+                {
+                    foreach (var cond in t.conditions)
+                    {
+                        if (cond.parameter == "isDeadEnemy" && cond.mode == AnimatorConditionMode.IfNot)
+                        {
+                            t.hasExitTime = false;
+                            t.duration = 0.15f;
+                            break;
+                        }
+                    }
+                }
             }
         }
 
