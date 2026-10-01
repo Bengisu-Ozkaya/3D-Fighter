@@ -85,6 +85,7 @@ public class PlayerController : MonoBehaviour
 
     [SerializeField] private GameObject startPanel;
     [SerializeField] private UIManager uiManager;
+    [SerializeField] private EnemySpawner enemySpawner;
     [Header("Mobil Kontroller")]
     [SerializeField] private VirtualJoystick joystick;
     private int playerDoBlock;
@@ -108,10 +109,10 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private int ultiHandsCount = 10;
     [Tooltip("Eller arasındaki doğma gecikmesi (saniye)")]
     [SerializeField] private float ultiHandsSpawnInterval = 0.12f;
-    [Tooltip("Ellerin doğacağı başlangıç Y yüksekliği (Zemin: 0)")]
-    [SerializeField] private float ultiHandsSpawnY = 0f;
-    [Tooltip("Ellerin yok olacağı hedef Y yüksekliği (3.33f)")]
-    [SerializeField] private float ultiHandsTargetY = 3.33f;
+    [Tooltip("Ellerin doğacağı başlangıç Y yüksekliği")]
+    [SerializeField] private float ultiHandsSpawnY = 3.33f;
+    [Tooltip("Ellerin yok olacağı hedef Y yüksekliği")]
+    [SerializeField] private float ultiHandsTargetY = 0;
     [Tooltip("Ellerin yukarı çıkış hızı")]
     [SerializeField] private float ultiHandsSpeed = 3.5f;
     [Tooltip("X ekseni minimum doğma konumu")]
@@ -146,12 +147,38 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private AudioSource playerAudioSource;
 
     private Coroutine ultiSoundCoroutine;
+    private Coroutine ultiCooldownCoroutine;
+
+    [Header("Ulti Çılgın Işık Şovu (Crazy Light Show)")]
+    [Tooltip("Ulti atılırken sahadaki ışıkların renkli ve çılgın bir parti şovuna dönüşmesini sağlar")]
+    [SerializeField] private bool enableUltiLightShow = true;
+    [Tooltip("Işıkların renk değiştirme ve yanıp sönme (strobe) hızı")]
+    [SerializeField] private float ultiLightSpeed = 7f;
+    [Tooltip("Ulti sırasında arena ışıklarının parlaklık çarpanı")]
+    [SerializeField] private float ultiLightIntensityMultiplier = 2.2f;
+    [Tooltip("Ulti sırasında oyuncu üzerinde doğacak parlak kahraman aura ışığı")]
+    [SerializeField] private bool spawnUltiHeroLight = true;
+
+    private Coroutine ultiLightCoroutine;
+    private GameObject ultiHeroLightObj;
+
+    private readonly Color[] crazyUltiColors = new Color[]
+    {
+        new Color(1.0f, 0.05f, 0.35f), // Neon Kırmızı / Fuşya
+        new Color(0.65f, 0.0f, 1.0f),  // Elektrik Moru
+        new Color(0.0f, 0.95f, 1.0f),  // Neon Turkuaz / Buz Mavisi
+        new Color(1.0f, 0.85f, 0.0f),  // Parlak Altın Sarısı
+        new Color(0.0f, 1.0f, 0.45f),  // Asit Yeşili
+        new Color(1.0f, 0.25f, 0.0f),  // Alev Turuncusu
+        new Color(1.0f, 0.0f, 0.85f),  // Manyak Magenta
+        new Color(0.1f, 0.55f, 1.0f)   // Kobalt Mavisi
+    };
 
     [SerializeField] Image playerHealthBar;
 
     void Awake()
     {
-        StartCoroutine(WaitForUlti());
+        usingUlti = true; // Ulti oyun başında hazır değildir; oyun modu seçildikten sonra yüklenmeye başlar
 #if UNITY_EDITOR
         if (handsPrefab == null)
         {
@@ -181,6 +208,11 @@ public class PlayerController : MonoBehaviour
             uiManager = FindObjectOfType<UIManager>();
         }
 
+        if (enemySpawner == null)
+        {
+            enemySpawner = FindObjectOfType<EnemySpawner>();
+        }
+
         if (joystick == null)
         {
             joystick = VirtualJoystick.Instance ?? FindObjectOfType<VirtualJoystick>(true);
@@ -208,6 +240,21 @@ public class PlayerController : MonoBehaviour
         // Kararlı yakın dövüş mesafesi kalibrasyonu
         if (punchRadius > 0.22f) punchRadius = 0.20f;
         if (maxPunchRange <= 0f || maxPunchRange > 1.4f) maxPunchRange = 1.25f;
+
+        // StartPanel kontrolü: Eğer startPanel sahnede yoksa veya kapalıysa ve oyun başladıysa ulti cooldown başlat
+        if (startPanel == null)
+        {
+            GameObject sp = GameObject.Find("Start Panel") ?? GameObject.Find("StartPanel");
+            if (sp != null) startPanel = sp;
+        }
+        if (startPanel == null || !startPanel.activeInHierarchy)
+        {
+            EnemySpawner spawner = FindObjectOfType<EnemySpawner>();
+            if (spawner != null && spawner.IsGameStarted)
+            {
+                StartUltiCooldown();
+            }
+        }
     }
 
     void BindFistBones()
@@ -645,6 +692,9 @@ public class PlayerController : MonoBehaviour
 
     IEnumerator UltiRoutine()
     {
+        // Çılgın renkli Ulti ışık şovunu başlat!
+        StartUltiLightShow();
+
         // Ulti sırasında Fighter Animation altındaki Hands öğesinden 10 el doğur ve yukarı hareket ettir
         if (ultiHandsCoroutine != null)
         {
@@ -704,8 +754,11 @@ public class PlayerController : MonoBehaviour
         isPunching = false;
         isCastingUlti = false; // Ulti animasyonu tamamen bitti!
 
+        // Işık şovunu durdur ve arena ışıklarını normale döndür
+        StopUltiLightShow();
+
         // 5. Cooldown süresini başlat
-        StartCoroutine(WaitForUlti());
+        StartUltiCooldown();
     }
 
     /// <summary>
@@ -780,11 +833,209 @@ public class PlayerController : MonoBehaviour
         return hitAny;
     }
 
+    /// <summary>
+    /// Oyun modu seçildiğinde veya Ulti kullanıldıktan sonra çağrılır.
+    /// Ulti yeteneğinin yüklenmesini (Cooldown süresini) başlatır.
+    /// </summary>
+    public void StartUltiCooldown()
+    {
+        usingUlti = true; // Ulti henüz hazır değil, doluyor
+
+        if (ultiCooldownCoroutine != null)
+        {
+            StopCoroutine(ultiCooldownCoroutine);
+        }
+        ultiCooldownCoroutine = StartCoroutine(WaitForUlti());
+        Debug.Log($"<color=cyan>[ULTİ YÜKLENİYOR]</color> Ulti {ultiCooldown} saniye sonra hazır olacak.");
+    }
+
     IEnumerator WaitForUlti()
     {
+        usingUlti = true;
         yield return new WaitForSeconds(ultiCooldown);
         usingUlti = false;
+        ultiCooldownCoroutine = null;
         Debug.Log("<color=green>[ULTİ TEKRAR HAZIR!]</color>");
+    }
+
+    /// <summary>
+    /// Ulti sırasında sahadaki ışıkları çılgın bir neon parti / fırtına şovuna geçirir.
+    /// </summary>
+    private void StartUltiLightShow()
+    {
+        if (!enableUltiLightShow) return;
+        if (ultiLightCoroutine != null)
+        {
+            StopCoroutine(ultiLightCoroutine);
+        }
+        ultiLightCoroutine = StartCoroutine(UltiLightShowRoutine());
+    }
+
+    /// <summary>
+    /// Ulti bittiğinde ışık şovunu durdurur ve sahneyi normal ışıklarına döndürür.
+    /// </summary>
+    private void StopUltiLightShow()
+    {
+        if (ultiLightCoroutine != null)
+        {
+            StopCoroutine(ultiLightCoroutine);
+            ultiLightCoroutine = null;
+        }
+
+        if (ultiHeroLightObj != null)
+        {
+            Destroy(ultiHeroLightObj);
+            ultiHeroLightObj = null;
+        }
+
+        RestoreArenaLighting();
+    }
+
+    private IEnumerator UltiLightShowRoutine()
+    {
+        // 1. Sahnedeki Point Light'ları topla
+        List<Light> pointLights = new List<Light>();
+        if (enemySpawner == null) enemySpawner = FindObjectOfType<EnemySpawner>();
+        if (enemySpawner != null)
+        {
+            pointLights.AddRange(enemySpawner.GetArenaPointLights());
+        }
+
+        if (pointLights.Count == 0)
+        {
+            foreach (var l in FindObjectsOfType<Light>())
+            {
+                if (l != null && l.type == LightType.Point)
+                {
+                    pointLights.Add(l);
+                }
+            }
+        }
+
+        // Directional Light'ı bul (Gökyüzü / Güneş ışığı)
+        Light dirLight = RenderSettings.sun;
+        if (dirLight == null)
+        {
+            foreach (var l in FindObjectsOfType<Light>())
+            {
+                if (l != null && l.type == LightType.Directional)
+                {
+                    dirLight = l;
+                    break;
+                }
+            }
+        }
+
+        // Orijinal renk ve parlaklıkları kaydet
+        Dictionary<Light, Color> origColors = new Dictionary<Light, Color>();
+        Dictionary<Light, float> origIntensities = new Dictionary<Light, float>();
+
+        foreach (var pl in pointLights)
+        {
+            if (pl != null && !origColors.ContainsKey(pl))
+            {
+                origColors[pl] = pl.color;
+                origIntensities[pl] = pl.intensity;
+            }
+        }
+
+        Color origDirColor = dirLight != null ? dirLight.color : Color.white;
+        float origDirIntensity = dirLight != null ? dirLight.intensity : 1f;
+
+        // 2. Oyuncunun üzerinde çılgın parlak bir Hero Aura Işığı oluştur
+        Light heroLight = null;
+        if (spawnUltiHeroLight)
+        {
+            if (ultiHeroLightObj != null) Destroy(ultiHeroLightObj);
+            ultiHeroLightObj = new GameObject("Ulti_Hero_Aura_Light");
+            ultiHeroLightObj.transform.position = transform.position + Vector3.up * 1.5f;
+            ultiHeroLightObj.transform.SetParent(transform);
+
+            heroLight = ultiHeroLightObj.AddComponent<Light>();
+            heroLight.type = LightType.Point;
+            heroLight.range = 15f;
+            heroLight.intensity = 22f;
+            heroLight.color = crazyUltiColors[0];
+        }
+
+        Debug.Log("<color=magenta>[ÇILGIN IŞIK ŞOVU!]</color> Arenada fırtınalı neon ışık şovu başladı!");
+
+        float timer = 0f;
+        while (isCastingUlti)
+        {
+            timer += Time.deltaTime * ultiLightSpeed;
+
+            // Directional Light: Ortamı karartıp mistik mor/kızıl bir havaya sok, point light'lar parlasın
+            if (dirLight != null)
+            {
+                float dirHue = (timer * 0.08f) % 1f;
+                dirLight.color = Color.HSVToRGB(dirHue, 0.75f, 0.35f);
+                dirLight.intensity = origDirIntensity * 0.3f;
+            }
+
+            // Hero Işığı: Oyuncunun etrafında süper hızlı neon renk geçişi ve nabız gibi atma
+            if (heroLight != null)
+            {
+                float heroHue = (timer * 0.45f) % 1f;
+                heroLight.color = Color.HSVToRGB(heroHue, 1f, 1f);
+                heroLight.intensity = 18f + 14f * Mathf.Sin(timer * 5f);
+            }
+
+            // Arena Point Lights: Birbirinden farklı fazlarda dalga dalga çılgın renk ve flaş
+            for (int i = 0; i < pointLights.Count; i++)
+            {
+                Light pl = pointLights[i];
+                if (pl == null) continue;
+
+                float phase = timer + (i * 0.5f);
+                int c1 = Mathf.FloorToInt(phase) % crazyUltiColors.Length;
+                int c2 = (c1 + 1) % crazyUltiColors.Length;
+                float t = phase - Mathf.Floor(phase);
+
+                pl.color = Color.Lerp(crazyUltiColors[c1], crazyUltiColors[c2], t);
+
+                float baseInt = origIntensities.ContainsKey(pl) ? origIntensities[pl] : 10f;
+                float strobe = 0.85f + 0.55f * Mathf.Sin(timer * 6f + i * 1.6f);
+                pl.intensity = baseInt * ultiLightIntensityMultiplier * strobe;
+            }
+
+            yield return null;
+        }
+
+        // Temizle ve normale dön
+        if (ultiHeroLightObj != null)
+        {
+            Destroy(ultiHeroLightObj);
+            ultiHeroLightObj = null;
+        }
+
+        if (dirLight != null)
+        {
+            dirLight.color = origDirColor;
+            dirLight.intensity = origDirIntensity;
+        }
+
+        RestoreArenaLighting(pointLights, origColors, origIntensities);
+    }
+
+    private void RestoreArenaLighting(List<Light> pointLights = null, Dictionary<Light, Color> origColors = null, Dictionary<Light, float> origIntensities = null)
+    {
+        if (enemySpawner == null) enemySpawner = FindObjectOfType<EnemySpawner>();
+        if (enemySpawner != null)
+        {
+            enemySpawner.UpdateArenaLighting(enemySpawner.CurrentWave, immediate: false);
+        }
+        else if (pointLights != null && origColors != null)
+        {
+            foreach (var pl in pointLights)
+            {
+                if (pl != null && origColors.ContainsKey(pl))
+                {
+                    pl.color = origColors[pl];
+                    pl.intensity = (origIntensities != null && origIntensities.ContainsKey(pl)) ? origIntensities[pl] : 10f;
+                }
+            }
+        }
     }
 
     IEnumerator UppercutRoutine()
@@ -1059,6 +1310,7 @@ public class PlayerController : MonoBehaviour
     public void ResetPlayerState()
     {
         StopAllCoroutines();
+        StopUltiLightShow();
 
         isDead = false;
         isStandingUp = false;
@@ -1080,6 +1332,8 @@ public class PlayerController : MonoBehaviour
         punchDamage = 10f;
         uppercutDamage = 20f;
         ultiDamage = 30f;
+        usingUlti = true;
+        ultiCooldownCoroutine = null;
         if (playerHealthBar != null)
         {
             playerHealthBar.fillAmount = 1f;
@@ -1319,6 +1573,7 @@ public class PlayerController : MonoBehaviour
             StopCoroutine(ultiSoundCoroutine);
             ultiSoundCoroutine = null;
         }
+        StopUltiLightShow();
 
         Debug.Log("<color=red>[OYUNCU NAKAVT OLDU!]</color>");
 

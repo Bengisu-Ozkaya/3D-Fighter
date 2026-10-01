@@ -141,6 +141,56 @@ public class EnemySpawner : MonoBehaviour
         new WaveStats(120f, 12f, 25f, 30f, 30f, 15f, 25f)
     };
 
+    // Orta mod için 10 dalganın kullanıcı tarafından tanımlanan tam istatistikleri
+    private readonly WaveStats[] mediumWaveStats = new WaveStats[]
+    {
+        // 1. Dalga: Player (100, 15, 25, 40) | Enemy (40, 8, 15)
+        new WaveStats(100f, 15f, 25f, 40f, 40f, 8f, 15f),
+        // 2. Dalga: Player (100, 15, 25, 40) | Enemy (40, 10, 20)
+        new WaveStats(100f, 15f, 25f, 40f, 40f, 10f, 20f),
+        // 3. Dalga: Player (100, 15, 25, 40) | Enemy (30, 12, 20)
+        new WaveStats(100f, 15f, 25f, 40f, 30f, 12f, 20f),
+        // 4. Dalga: Player (120, 20, 30, 40) | Enemy (40, 10, 20)
+        new WaveStats(120f, 20f, 30f, 40f, 40f, 10f, 20f),
+        // 5. Dalga: Player (120, 20, 30, 40) | Enemy (40, 12, 20)
+        new WaveStats(120f, 20f, 30f, 40f, 40f, 12f, 20f),
+        // 6. Dalga: Player (120, 20, 30, 30) | Enemy (30, 12, 25)
+        new WaveStats(120f, 20f, 30f, 30f, 30f, 12f, 25f),
+        // 7. Dalga: Player (120, 20, 30, 40) | Enemy (40, 17, 25)
+        new WaveStats(120f, 20f, 30f, 40f, 40f, 17f, 25f),
+        // 8. Dalga: Player (150, 20, 30, 40) | Enemy (40, 12, 20)
+        new WaveStats(150f, 20f, 30f, 40f, 40f, 12f, 20f),
+        // 9. Dalga: Player (150, 20, 30, 40) | Enemy (40, 15, 25)
+        new WaveStats(150f, 20f, 30f, 40f, 40f, 15f, 25f),
+        // 10. Dalga: Player (150, 20, 30, 40) | Enemy (40, 17, 30)
+        new WaveStats(150f, 20f, 30f, 40f, 40f, 17f, 30f)
+    };
+
+    // Zor mod için 10 dalganın kullanıcı tarafından tanımlanan tam istatistikleri
+    private readonly WaveStats[] hardWaveStats = new WaveStats[]
+    {
+        // 1. Dalga: Player (100, 25, 30, 50) | Enemy (50, 10, 20)
+        new WaveStats(100f, 25f, 30f, 50f, 50f, 10f, 20f),
+        // 2. Dalga: Player (100, 25, 30, 50) | Enemy (50, 12, 25)
+        new WaveStats(100f, 25f, 30f, 50f, 50f, 12f, 25f),
+        // 3. Dalga: Player (100, 25, 30, 50) | Enemy (50, 15, 30)
+        new WaveStats(100f, 25f, 30f, 50f, 50f, 15f, 30f),
+        // 4. Dalga: Player (130, 25, 30, 50) | Enemy (50, 10, 20)
+        new WaveStats(130f, 25f, 30f, 50f, 50f, 10f, 20f),
+        // 5. Dalga: Player (130, 25, 30, 50) | Enemy (50, 12, 25)
+        new WaveStats(130f, 25f, 30f, 50f, 50f, 12f, 25f),
+        // 6. Dalga: Player (130, 25, 30, 50) | Enemy (50, 15, 30)
+        new WaveStats(130f, 25f, 30f, 50f, 50f, 15f, 30f),
+        // 7. Dalga: Player (130, 25, 30, 50) | Enemy (50, 18, 30)
+        new WaveStats(130f, 25f, 30f, 50f, 50f, 18f, 30f),
+        // 8. Dalga: Player (160, 25, 35, 50) | Enemy (50, 15, 30)
+        new WaveStats(160f, 25f, 35f, 50f, 50f, 15f, 30f),
+        // 9. Dalga: Player (160, 25, 35, 50) | Enemy (40, 17, 35)
+        new WaveStats(160f, 25f, 35f, 50f, 40f, 17f, 35f),
+        // 10. Dalga: Player (160, 25, 35, 50) | Enemy (40, 20, 40)
+        new WaveStats(160f, 25f, 35f, 50f, 40f, 20f, 40f)
+    };
+
     private int[] currentWaveCounts = new int[] { 1, 2, 3 };
     private Difficulty currentDifficulty = Difficulty.Easy;
 
@@ -253,11 +303,11 @@ public class EnemySpawner : MonoBehaviour
         }
         else if (currentDifficulty == Difficulty.Medium)
         {
-            return new WaveStats(100f, midPlayerDamage, midPlayerUppercutDamage, 30f, midEnemyHealth, midDamage, 20f);
+            return mediumWaveStats[index];
         }
         else // Hard
         {
-            return new WaveStats(100f, hardPlayerDamage, hardPlayerUppercutDamage, 30f, hardEnemyHealth, hardDamage, 30f);
+            return hardWaveStats[index];
         }
     }
 
@@ -377,6 +427,12 @@ public class EnemySpawner : MonoBehaviour
         // Oyuncunun canını, yumruk, aparkat ve ulti hasarlarını 1. dalgaya göre ayarla (Oyun başında can dolar)
         ApplyWaveStatsToPlayer(wave, restoreHealth: true);
 
+        PlayerController player = FindObjectOfType<PlayerController>();
+        if (player != null)
+        {
+            player.StartUltiCooldown();
+        }
+
         // İlk dalgayı başlat
         StartCoroutine(SpawnEnemyRoutine(wave, true));
     }
@@ -461,6 +517,12 @@ public class EnemySpawner : MonoBehaviour
         // Oyuncuyu öldüğü dalganın değerleriyle tazele (Relive olduğu için can dolar)
         ApplyWaveStatsToPlayer(wave, restoreHealth: true);
 
+        PlayerController relivePlayer = FindObjectOfType<PlayerController>();
+        if (relivePlayer != null)
+        {
+            relivePlayer.StartUltiCooldown();
+        }
+
         Debug.Log($"<color=cyan>[ÖLÜNEN DALGA YENİDEN BAŞLATILIYOR]</color> Dalga {wave}/{TOTAL_WAVES} - Saha: #1 - Mod: {currentDifficulty}");
         StartCoroutine(SpawnEnemyRoutine(wave, true));
     }
@@ -489,6 +551,12 @@ public class EnemySpawner : MonoBehaviour
 
         // Oyuncuyu 1. dalga değerleriyle tazele (Can dolar)
         ApplyWaveStatsToPlayer(1, restoreHealth: true);
+
+        PlayerController restartPlayer = FindObjectOfType<PlayerController>();
+        if (restartPlayer != null)
+        {
+            restartPlayer.StartUltiCooldown();
+        }
 
         Debug.Log($"<color=cyan>[OYUN YENİDEN BAŞLATILDI]</color> Mod: {currentDifficulty} - Saha: #1");
         StartCoroutine(SpawnEnemyRoutine(wave, true));
@@ -662,6 +730,15 @@ public class EnemySpawner : MonoBehaviour
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Arenadaki Point Light referanslarını döner (Ulti ışık şovu vb. için)
+    /// </summary>
+    public List<Light> GetArenaPointLights()
+    {
+        FindArenaPointLightsIfNeeded();
+        return arenaPointLights;
     }
 
     /// <summary>

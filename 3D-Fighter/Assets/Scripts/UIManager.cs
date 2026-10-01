@@ -182,6 +182,11 @@ public class UIManager : MonoBehaviour
         {
             enemySpawner.StartEasyMode();
         }
+        if (playerController == null) playerController = FindObjectOfType<PlayerController>();
+        if (playerController != null)
+        {
+            playerController.StartUltiCooldown();
+        }
     }
 
     public void MidMode()
@@ -195,6 +200,11 @@ public class UIManager : MonoBehaviour
         {
             enemySpawner.StartMidMode();
         }
+        if (playerController == null) playerController = FindObjectOfType<PlayerController>();
+        if (playerController != null)
+        {
+            playerController.StartUltiCooldown();
+        }
     }
 
     public void HardMode()
@@ -207,6 +217,11 @@ public class UIManager : MonoBehaviour
         if (enemySpawner != null)
         {
             enemySpawner.StartHardMode();
+        }
+        if (playerController == null) playerController = FindObjectOfType<PlayerController>();
+        if (playerController != null)
+        {
+            playerController.StartUltiCooldown();
         }
     }
 
@@ -284,6 +299,7 @@ public class UIManager : MonoBehaviour
         if (playerController != null)
         {
             playerController.RelivePlayer();
+            playerController.StartUltiCooldown();
         }
     }
 
@@ -307,6 +323,7 @@ public class UIManager : MonoBehaviour
         if (playerController != null)
         {
             playerController.ResetPlayerState();
+            playerController.StartUltiCooldown();
         }
 
         // Spawner'ı aynı modda yeniden başlat

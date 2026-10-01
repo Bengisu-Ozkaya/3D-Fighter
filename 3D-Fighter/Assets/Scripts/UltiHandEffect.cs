@@ -52,9 +52,9 @@ public class UltiHandEffect : MonoBehaviour
         if (isMovingUp)
         {
             // Aşağıdan yukarıya hareket (+Y)
-            transform.position += Vector3.up * (moveSpeed * Time.deltaTime);
+            transform.position += Vector3.down * (moveSpeed * Time.deltaTime);
 
-            if (transform.position.y >= targetY)
+            if (transform.position.y <= targetY)
             {
                 Destroy(gameObject);
             }
