@@ -31,6 +31,181 @@ public class AnimationFixer
         Debug.Log("<color=green>[3D Fighter]</color> Yumruk doğrultuları, Head Hit ve animasyon geçiş ayarları başarıyla güncellendi!");
     }
 
+    // ─────────────────────────────────────────────────────────────────────────────
+    // ORTIZ ANİMASYON ENTEGRASYONU
+    // ─────────────────────────────────────────────────────────────────────────────
+    [MenuItem("Tools/3D Fighter/Ortiz Animasyonlarini Entegre Et (Player Controller)")]
+    public static void IntegrateOrtizAnimations()
+    {
+        const string controllerPath = "Assets/Fighter Animation/Idle.controller";
+        AnimatorController controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(controllerPath);
+        if (controller == null)
+        {
+            Debug.LogError("[Ortiz] Idle.controller bulunamadı: " + controllerPath);
+            return;
+        }
+
+        // Ortiz FBX yolları ve animasyon clip GUIDleri
+        var ortizClips = new System.Collections.Generic.Dictionary<string, string>
+        {
+            { "Block Idle",      "Assets/Ortiz/Block Idle.fbx" },
+            { "Uppercut",        "Assets/Ortiz/Uppercut.fbx" },
+            { "Left Pivot",      "Assets/Ortiz/Left Pivot.fbx" },
+            { "Right Pivot",     "Assets/Ortiz/Right Pivot.fbx" },
+            { "Left Punch",      "Assets/Ortiz/Left Punch.fbx" },
+            { "Right Punch",     "Assets/Ortiz/Right Punch.fbx" },
+            { "Uppercut Nakavt", "Assets/Ortiz/Uppercut Nakavt.fbx" },
+            { "Right Damage",    "Assets/Ortiz/Right Damage.fbx" },
+            { "Left Damage",     "Assets/Ortiz/Right Damage.fbx" },  // Mirror edilmiş versiyon
+            { "Right Step",      "Assets/Ortiz/Right Step.fbx" },
+            { "Left Step",       "Assets/Ortiz/Left Step.fbx" },
+            { "Backward Step",   "Assets/Ortiz/Backward Step.fbx" },
+            { "Forward Step",    "Assets/Ortiz/Forward Step.fbx" },
+            { "Idle",            "Assets/Ortiz/Idle.fbx" },
+        };
+
+        var sm = controller.layers[0].stateMachine;
+
+        // Mevcut state'leri topla (isim → state)
+        var existingStates = new System.Collections.Generic.Dictionary<string, AnimatorState>();
+        foreach (var cs in sm.states)
+        {
+            if (!existingStates.ContainsKey(cs.state.name))
+                existingStates[cs.state.name] = cs.state;
+        }
+
+        // Idle state'ini bul veya oluştur (referans point)
+        AnimatorState idleState = existingStates.ContainsKey("Idle") ? existingStates["Idle"] : null;
+
+        // Her Ortiz state için: varsa güncelle, yoksa ekle
+        var statePositions = new System.Collections.Generic.Dictionary<string, Vector3>
+        {
+            { "Idle",            new Vector3(300,  30, 0) },
+            { "Block Idle",      new Vector3(520, 380, 0) },
+            { "Uppercut",        new Vector3(170, 220, 0) },
+            { "Left Pivot",      new Vector3(700, 140, 0) },
+            { "Right Pivot",     new Vector3(700, 220, 0) },
+            { "Left Punch",      new Vector3(170, 300, 0) },
+            { "Right Punch",     new Vector3(170, 380, 0) },
+            { "Uppercut Nakavt", new Vector3(520, 460, 0) },
+            { "Right Damage",    new Vector3(650, 290, 0) },
+            { "Left Damage",     new Vector3(650, 380, 0) },
+            { "Right Step",      new Vector3(700, 300, 0) },
+            { "Left Step",       new Vector3(700, 380, 0) },
+            { "Backward Step",   new Vector3(700, 460, 0) },
+            { "Forward Step",    new Vector3(700, 540, 0) },
+        };
+
+        foreach (var kvp in ortizClips)
+        {
+            string stateName = kvp.Key;
+            string clipPath  = kvp.Value;
+
+            AnimationClip clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(clipPath);
+            if (clip == null)
+            {
+                Debug.LogWarning($"[Ortiz] Klip bulunamadı: {clipPath}  (State '{stateName}' atlandı)");
+                continue;
+            }
+
+            // Left Damage için mirror flag'i uygula
+            bool isMirror = (stateName == "Left Damage");
+
+            AnimatorState state;
+            if (existingStates.ContainsKey(stateName))
+            {
+                state = existingStates[stateName];
+            }
+            else
+            {
+                Vector3 pos = statePositions.ContainsKey(stateName) ? statePositions[stateName] : new Vector3(800, 300, 0);
+                state = sm.AddState(stateName, pos);
+                existingStates[stateName] = state;
+            }
+
+            state.motion = clip;
+            state.mirror = isMirror; // Left Damage = Right Damage klibinin mirror'ı
+            state.writeDefaultValues = true;
+
+            // Idle'ı varsayılan state yap
+            if (stateName == "Idle")
+            {
+                idleState = state;
+                sm.defaultState = state;
+            }
+        }
+
+        // FBX import ayarları: Root motion ve orientasyon kilitle
+        foreach (var kvp in ortizClips)
+        {
+            string clipPath = kvp.Value;
+            ModelImporter importer = AssetImporter.GetAtPath(clipPath) as ModelImporter;
+            if (importer == null) continue;
+
+            ModelImporterClipAnimation[] clips = importer.clipAnimations;
+            if (clips == null || clips.Length == 0) clips = importer.defaultClipAnimations;
+            bool changed = false;
+            foreach (var c in clips)
+            {
+                if (!c.lockRootRotation) { c.lockRootRotation = true; changed = true; }
+                if (!c.keepOriginalOrientation) { c.keepOriginalOrientation = true; changed = true; }
+                if (!c.lockRootPositionXZ) { c.lockRootPositionXZ = true; changed = true; }
+                if (!c.keepOriginalPositionXZ) { c.keepOriginalPositionXZ = true; changed = true; }
+                c.lockRootHeightY = true;
+            }
+            if (changed)
+            {
+                importer.clipAnimations = clips;
+                importer.SaveAndReimport();
+            }
+        }
+
+        // Eski state'lerin adlarını güncelle (Center Block → silinir, yenisi Block Idle oldu)
+        // Eski state'ler kaldırılamıyor (referanslar var), sadece motion güncellenir
+        if (existingStates.ContainsKey("Center Block") && existingStates.ContainsKey("Block Idle"))
+        {
+            // Center Block state'ini Block Idle klibine yönlendir
+            var cb = existingStates["Center Block"];
+            var bi = existingStates["Block Idle"];
+            cb.motion = bi.motion;
+            Debug.Log("[Ortiz] Center Block state'i Block Idle klibine güncellendi.");
+        }
+
+        if (existingStates.ContainsKey("Hit") && existingStates.ContainsKey("Right Damage"))
+        {
+            existingStates["Hit"].motion = existingStates["Right Damage"].motion;
+            Debug.Log("[Ortiz] Hit state'i Right Damage klibine güncellendi.");
+        }
+        if (existingStates.ContainsKey("Head Hit") && existingStates.ContainsKey("Left Damage"))
+        {
+            existingStates["Head Hit"].motion = existingStates["Left Damage"].motion;
+            existingStates["Head Hit"].mirror = true;
+            Debug.Log("[Ortiz] Head Hit state'i Left Damage (mirror) klibine güncellendi.");
+        }
+        if (existingStates.ContainsKey("Knockout") && existingStates.ContainsKey("Uppercut Nakavt"))
+        {
+            existingStates["Knockout"].motion = existingStates["Uppercut Nakavt"].motion;
+            Debug.Log("[Ortiz] Knockout state'i Uppercut Nakavt klibine güncellendi.");
+        }
+        if (existingStates.ContainsKey("Left Move") && existingStates.ContainsKey("Left Step"))
+        {
+            existingStates["Left Move"].motion = existingStates["Left Step"].motion;
+            Debug.Log("[Ortiz] Left Move state'i Left Step klibine güncellendi.");
+        }
+        if (existingStates.ContainsKey("Right Move") && existingStates.ContainsKey("Right Step"))
+        {
+            existingStates["Right Move"].motion = existingStates["Right Step"].motion;
+            Debug.Log("[Ortiz] Right Move state'i Right Step klibine güncellendi.");
+        }
+
+        EditorUtility.SetDirty(controller);
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+
+        Debug.Log("<color=cyan>[Ortiz]</color> Tüm Ortiz animasyonları Idle.controller'a başarıyla entegre edildi! " +
+                  "Unity Editor'da Animator Controller'ı açarak geçişleri kontrol et.");
+    }
+
     private static void ConfigureClip(string path, float orientationOffsetY)
     {
         ModelImporter importer = AssetImporter.GetAtPath(path) as ModelImporter;

@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
-using System.Diagnostics;
 
 public class UIManager : MonoBehaviour
 {
@@ -13,7 +12,9 @@ public class UIManager : MonoBehaviour
     [SerializeField] private GameObject gameOverPanel;
     [SerializeField] private GameObject mobileControlPanel;
     [SerializeField] private GameObject healtBarPanel;
-    [SerializeField] private TMP_Text hitButtonText;
+    [SerializeField] private GameObject pausePanel;
+    [SerializeField] private GameObject pauseButton;
+    [SerializeField] private GameObject ultiButton;
     [SerializeField] private TMP_Text playerHealthText;
 
     [Header("Referanslar")]
@@ -55,15 +56,46 @@ public class UIManager : MonoBehaviour
             }
         }
 
+        if (pausePanel == null)
+        {
+            FindPausePanel();
+        }
+
+        if (pauseButton == null)
+        {
+            FindPauseButton();
+        }
+
+        if (ultiButton == null)
+        {
+            FindUltiButton();
+        }
+
         BindGameOverButtons();
         BindVictoryButtons();
+        BindPauseButtons();
+        BindUltiButton();
     }
 
     void Start()
     {
+        Time.timeScale = 1f;
+
+        // Mobil Control paneli şeffaf arka planının Pause Button veya diğer UI butonlarının tıklanmasını engellemesini önle
+        if (mobileControlPanel != null)
+        {
+            Image bgImg = mobileControlPanel.GetComponent<Image>();
+            if (bgImg != null)
+            {
+                bgImg.raycastTarget = false;
+            }
+        }
+
         if (startPanel != null) startPanel.SetActive(true);
         if (victoryPanel != null) victoryPanel.SetActive(false);
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
+        if (pausePanel != null) pausePanel.SetActive(false);
+        if (pauseButton != null) pauseButton.SetActive(false);
         if (healtBarPanel != null) healtBarPanel.SetActive(false);
         if (mobileControlPanel != null)
         {
@@ -80,16 +112,133 @@ public class UIManager : MonoBehaviour
                 playerHealthText.SetText(Mathf.Max(0, Mathf.CeilToInt(playerController.playerHealth)).ToString());
             }
 
-            if (hitButtonText != null)
+            if (ultiButton != null)
             {
-                if (!playerController.usingUlti)
+                bool canShowUlti = !playerController.usingUlti &&
+                                   (startPanel == null || !startPanel.activeSelf) &&
+                                   (pausePanel == null || !pausePanel.activeSelf) &&
+                                   (gameOverPanel == null || !gameOverPanel.activeSelf) &&
+                                   (victoryPanel == null || !victoryPanel.activeSelf) &&
+                                   (mobileControlPanel == null || mobileControlPanel.activeSelf);
+
+                if (ultiButton.activeSelf != canShowUlti)
                 {
-                    hitButtonText.SetText("ULTİ");
+                    ultiButton.SetActive(canShowUlti);
                 }
-                else
+            }
+        }
+
+        // Klavye kısayolu (ESC veya P) ile oyunu duraklat / devam ettir
+        if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.P))
+        {
+            if (pausePanel != null && pausePanel.activeSelf)
+            {
+                ContinueButton();
+            }
+            else if (startPanel != null && !startPanel.activeSelf &&
+                     (gameOverPanel == null || !gameOverPanel.activeSelf) &&
+                     (victoryPanel == null || !victoryPanel.activeSelf))
+            {
+                PauseGame();
+            }
+        }
+    }
+
+    void FindPausePanel()
+    {
+        Canvas canvas = FindObjectOfType<Canvas>();
+        if (canvas != null)
+        {
+            foreach (Transform child in canvas.transform)
+            {
+                if (child.name.Equals("Pause Panel", System.StringComparison.OrdinalIgnoreCase) ||
+                    child.name.Equals("PausePanel", System.StringComparison.OrdinalIgnoreCase) ||
+                    (child.name.Contains("Pause") && child.GetComponent<Button>() == null))
                 {
-                    hitButtonText.SetText("Vur");
+                    pausePanel = child.gameObject;
+                    break;
                 }
+            }
+        }
+    }
+
+    void FindPauseButton()
+    {
+        Canvas canvas = FindObjectOfType<Canvas>();
+        if (canvas != null)
+        {
+            Button[] allButtons = canvas.GetComponentsInChildren<Button>(true);
+            foreach (var btn in allButtons)
+            {
+                if (btn.name.Equals("Pause Button", System.StringComparison.OrdinalIgnoreCase) ||
+                    btn.name.Equals("PauseButton", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    pauseButton = btn.gameObject;
+                    break;
+                }
+            }
+        }
+    }
+
+    void BindPauseButtons()
+    {
+        if (pausePanel != null)
+        {
+            Button[] buttons = pausePanel.GetComponentsInChildren<Button>(true);
+            foreach (var btn in buttons)
+            {
+                if (btn.name.Contains("Continue") || btn.name.Contains("Devam"))
+                {
+                    btn.onClick.RemoveListener(ContinueButton);
+                    btn.onClick.AddListener(ContinueButton);
+                }
+                else if (btn.name.Contains("Home") || btn.name.Contains("Menu") || btn.name.Contains("Start"))
+                {
+                    btn.onClick.RemoveListener(ReturnToMainMenu);
+                    btn.onClick.AddListener(ReturnToMainMenu);
+                }
+            }
+        }
+
+        if (pauseButton != null)
+        {
+            Button btn = pauseButton.GetComponent<Button>();
+            if (btn != null)
+            {
+                btn.onClick.RemoveListener(PauseGame);
+                btn.onClick.AddListener(PauseGame);
+            }
+        }
+    }
+
+    void FindUltiButton()
+    {
+        Canvas canvas = FindObjectOfType<Canvas>();
+        if (canvas != null)
+        {
+            Button[] allButtons = canvas.GetComponentsInChildren<Button>(true);
+            foreach (var btn in allButtons)
+            {
+                if (btn.name.Equals("Ulti Button", System.StringComparison.OrdinalIgnoreCase) ||
+                    btn.name.Equals("UltiButton", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    ultiButton = btn.gameObject;
+                    break;
+                }
+            }
+        }
+    }
+
+    void BindUltiButton()
+    {
+        if (playerController == null) playerController = FindObjectOfType<PlayerController>();
+        if (ultiButton != null && playerController != null)
+        {
+            Button btn = ultiButton.GetComponent<Button>();
+            if (btn != null)
+            {
+                btn.onClick.RemoveListener(playerController.UltiButton);
+                btn.onClick.AddListener(playerController.UltiButton);
             }
         }
     }
@@ -171,13 +320,30 @@ public class UIManager : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Pause butonunu en ön katmana getirir (SetAsLastSibling) ve aktif eder.
+    /// Bu sayede Mobil Control veya diğer paneller asla butonun üzerine geçip tıklamaları engelleyemez.
+    /// </summary>
+    public void ShowPauseButton()
+    {
+        if (pauseButton != null)
+        {
+            pauseButton.transform.SetAsLastSibling();
+            pauseButton.SetActive(true);
+        }
+    }
+
     public void EasyMode()
     {
+        Time.timeScale = 1f;
         if (startPanel != null) startPanel.SetActive(false);
         if (victoryPanel != null) victoryPanel.SetActive(false);
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
-        if(healtBarPanel != null) healtBarPanel.SetActive(true);
+        if (pausePanel != null) pausePanel.SetActive(false);
+        if (healtBarPanel != null) healtBarPanel.SetActive(true);
         if (mobileControlPanel != null) mobileControlPanel.SetActive(true);
+        ShowPauseButton(); // Pause butonu her zaman en öne getirilir
+
         if (enemySpawner != null)
         {
             enemySpawner.StartEasyMode();
@@ -191,11 +357,15 @@ public class UIManager : MonoBehaviour
 
     public void MidMode()
     {
+        Time.timeScale = 1f;
         if (startPanel != null) startPanel.SetActive(false);
         if (victoryPanel != null) victoryPanel.SetActive(false);
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
-        if(healtBarPanel != null) healtBarPanel.SetActive(true);
+        if (pausePanel != null) pausePanel.SetActive(false);
+        if (healtBarPanel != null) healtBarPanel.SetActive(true);
         if (mobileControlPanel != null) mobileControlPanel.SetActive(true);
+        ShowPauseButton();
+
         if (enemySpawner != null)
         {
             enemySpawner.StartMidMode();
@@ -209,11 +379,15 @@ public class UIManager : MonoBehaviour
 
     public void HardMode()
     {
+        Time.timeScale = 1f;
         if (startPanel != null) startPanel.SetActive(false);
         if (victoryPanel != null) victoryPanel.SetActive(false);
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
-        if(healtBarPanel != null) healtBarPanel.SetActive(true);
+        if (pausePanel != null) pausePanel.SetActive(false);
+        if (healtBarPanel != null) healtBarPanel.SetActive(true);
         if (mobileControlPanel != null) mobileControlPanel.SetActive(true);
+        ShowPauseButton();
+
         if (enemySpawner != null)
         {
             enemySpawner.StartHardMode();
@@ -230,9 +404,12 @@ public class UIManager : MonoBehaviour
     /// </summary>
     public void ShowVictoryPanel()
     {
+        Time.timeScale = 1f;
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
+        if (pausePanel != null) pausePanel.SetActive(false);
+        if (pauseButton != null) pauseButton.SetActive(false);
         if (mobileControlPanel != null) mobileControlPanel.SetActive(false);
-        if(healtBarPanel != null) healtBarPanel.SetActive(false);
+        if (healtBarPanel != null) healtBarPanel.SetActive(false);
         if (victoryPanel != null)
         {
             victoryPanel.SetActive(true);
@@ -244,6 +421,7 @@ public class UIManager : MonoBehaviour
     /// </summary>
     public void ShowGameOverPanel(int deadWave = -1)
     {
+        Time.timeScale = 1f;
         if (deadWave <= 0 && enemySpawner != null)
         {
             deadWave = enemySpawner.CurrentWave;
@@ -263,6 +441,8 @@ public class UIManager : MonoBehaviour
 
             gameOverPanel.SetActive(true);
         }
+        if (pausePanel != null) pausePanel.SetActive(false);
+        if (pauseButton != null) pauseButton.SetActive(false);
         if (mobileControlPanel != null) mobileControlPanel.SetActive(false);
     }
 
@@ -284,8 +464,12 @@ public class UIManager : MonoBehaviour
     /// </summary>
     public void Relive()
     {
+        Time.timeScale = 1f;
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
+        if (pausePanel != null) pausePanel.SetActive(false);
+        if (healtBarPanel != null) healtBarPanel.SetActive(true);   // ← Health bar göster
         if (mobileControlPanel != null) mobileControlPanel.SetActive(true);
+        ShowPauseButton();
 
         // 1. Spawner'da oyuncunun öldüğü mevcut dalgayı yeniden başlat
         if (enemySpawner == null) enemySpawner = FindObjectOfType<EnemySpawner>();
@@ -313,10 +497,14 @@ public class UIManager : MonoBehaviour
     /// </summary>
     public void RestartGame()
     {
+        Time.timeScale = 1f;
         if (victoryPanel != null) victoryPanel.SetActive(false);
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
+        if (pausePanel != null) pausePanel.SetActive(false);
         if (startPanel != null) startPanel.SetActive(false);
+        if (healtBarPanel != null) healtBarPanel.SetActive(true);   // ← Health bar göster
         if (mobileControlPanel != null) mobileControlPanel.SetActive(true);
+        ShowPauseButton();
 
         // Oyuncuyu sıfırla
         if (playerController == null) playerController = FindObjectOfType<PlayerController>();
@@ -339,8 +527,12 @@ public class UIManager : MonoBehaviour
     /// </summary>
     public void ReturnToMainMenu()
     {
+        Time.timeScale = 1f; // Oyun duraklatılmışsa zamanı normale döndür
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
         if (victoryPanel != null) victoryPanel.SetActive(false);
+        if (pausePanel != null) pausePanel.SetActive(false);
+        if (pauseButton != null) pauseButton.SetActive(false);
+        if (healtBarPanel != null) healtBarPanel.SetActive(false);
         if (startPanel != null) startPanel.SetActive(true);
         if (mobileControlPanel != null) mobileControlPanel.SetActive(false);
 
@@ -357,5 +549,41 @@ public class UIManager : MonoBehaviour
         {
             enemySpawner.ResetSpawner();
         }
+        Debug.Log("<color=cyan>[ANA MENÜ]</color> Start Panel açıldı, oyun sıfırlandı.");
+    }
+
+    /// <summary>
+    /// Oyunu duraklatır (Pause) ve Pause Panelini açar
+    /// </summary>
+    public void PauseGame()
+    {
+        // Start paneli, zafer veya yenilgi paneli açıkken duraklatma yapılamaz
+        if (startPanel != null && startPanel.activeSelf) return;
+        if (victoryPanel != null && victoryPanel.activeSelf) return;
+        if (gameOverPanel != null && gameOverPanel.activeSelf) return;
+
+        Time.timeScale = 0f;
+        if (healtBarPanel != null) healtBarPanel.SetActive(false);  // ← Can barını gizle
+        if (pausePanel != null)
+        {
+            pausePanel.transform.SetAsLastSibling(); // Pause panel en öne gelsin
+            pausePanel.SetActive(true);
+        }
+        if (pauseButton != null) pauseButton.SetActive(false);
+        if (mobileControlPanel != null) mobileControlPanel.SetActive(false);
+        Debug.Log("<color=yellow>[OYUN DURAKLATILDI]</color> Pause Panel açıldı, oyun durdu.");
+    }
+
+    /// <summary>
+    /// Duraklatılmış oyunu kaldığı yerden devam ettirir
+    /// </summary>
+    public void ContinueButton()
+    {
+        Time.timeScale = 1f;
+        if (pausePanel != null) pausePanel.SetActive(false);
+        if (healtBarPanel != null) healtBarPanel.SetActive(true);   // ← Can barını göster
+        if (mobileControlPanel != null) mobileControlPanel.SetActive(true);
+        ShowPauseButton();
+        Debug.Log("<color=green>[OYUN DEVAM EDİYOR]</color> Pause Panel kapatıldı, oyun devam ediyor.");
     }
 }

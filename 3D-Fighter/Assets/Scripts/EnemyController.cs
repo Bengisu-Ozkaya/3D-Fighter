@@ -399,12 +399,14 @@ public class EnemyController : MonoBehaviour
                 enemyAnimator.CrossFadeInFixedTime("Uppercut", 0.12f);
             }
             if (currentAttackCoroutine != null) StopCoroutine(currentAttackCoroutine);
-            currentAttackCoroutine = StartCoroutine(EnemyAttackRoutine(0.35f, true));
+            // Aparkat: isFromRight=false → oyuncuya ağır sol/üstten vuruş (Left Damage)
+            currentAttackCoroutine = StartCoroutine(EnemyAttackRoutine(0.35f, true, false));
         }
         else
         {
-            // Normal yumruk (PunchLeft veya PunchRight)
-            string punchTrigger = Random.value > 0.5f ? "PunchRight" : "PunchLeft";
+            // Normal yumruk (PunchLeft veya PunchRight) — sağ mı sol mu seçildiğini kaydet
+            bool useRightPunch = Random.value > 0.5f;
+            string punchTrigger = useRightPunch ? "PunchRight" : "PunchLeft";
             if (enemyAnimator != null)
             {
                 enemyAnimator.ResetTrigger("PunchLeft");
@@ -412,11 +414,13 @@ public class EnemyController : MonoBehaviour
                 enemyAnimator.SetTrigger(punchTrigger);
             }
             if (currentAttackCoroutine != null) StopCoroutine(currentAttackCoroutine);
-            currentAttackCoroutine = StartCoroutine(EnemyAttackRoutine(0.30f, false));
+            // Düşman PunchRight attığında oyuncunun sağ tarafına çarpar → isFromRight=true
+            // Düşman PunchLeft attığında oyuncunun sol tarafına çarpar → isFromRight=false
+            currentAttackCoroutine = StartCoroutine(EnemyAttackRoutine(0.30f, false, useRightPunch));
         }
     }
 
-    IEnumerator EnemyAttackRoutine(float windup, bool isUppercut)
+    IEnumerator EnemyAttackRoutine(float windup, bool isUppercut, bool isFromRight = true)
     {
         yield return new WaitForSeconds(windup);
 
@@ -443,7 +447,7 @@ public class EnemyController : MonoBehaviour
                 if (currentDistance <= maxHitDistance && dot > 0.25f)
                 {
                     float damageToDeal = isUppercut ? uppercutDamage : attackDamage;
-                    playerController.TakeDamage(damageToDeal, isUppercut);
+                    playerController.TakeDamage(damageToDeal, isUppercut, isFromRight);
                 }
                 else
                 {

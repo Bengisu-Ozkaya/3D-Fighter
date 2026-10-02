@@ -20,8 +20,8 @@ public class PlayerController : MonoBehaviour
     [Tooltip("Yumruğun rakibe ulaşabileceği azami mesafe (metre). Bu mesafeden uzaktaki rakiplere hasar verilemez.")]
     [SerializeField] float maxPunchRange = 25f;
 
-    [Tooltip("Yumruk atarken karakterin ileriye doğru attığı doğal boks adımı mesafesi (metre)")]
-    [SerializeField] float punchStepDistance = 0.08f;
+    [Tooltip("Yumruk atarken karakterin ileriye doğru attığı doğal boks adımı mesafesi (metre) - İleri hamleyi kapatmak için 0")]
+    [SerializeField] float punchStepDistance = 0f;
 
     [Tooltip("Yumruğun aktif kalıp temas arayacağı süre (saniye). Boks animasyonunun uzanma ve geri çekilme aralığı.")]
     [SerializeField] float punchActiveDuration = 0.40f;
@@ -87,6 +87,12 @@ public class PlayerController : MonoBehaviour
     private Coroutine uppercutRoutine = null;
     private Coroutine hitStunRoutine = null;
     private float nextPunchAvailableTime = 0f;
+
+    // Ortiz animasyon sistemi: hareket animasyonu çakışmasını önlemek için mevcut hareketi takip et
+    private enum MoveAnim { None, Idle, Forward, Backward, Left, Right, LeftPivot, RightPivot }
+    private MoveAnim currentMoveAnim = MoveAnim.None;
+    private const float MOVE_ANIM_BLEND = 0.10f; // CrossFade süresi (saniye)
+    private Coroutine blockingCoroutine = null;   // Blocking giriş animasyonu coroutine'i
 
     [Header("Vuruş Zamanlamaları (Windup & Cooldown)")]
     [Tooltip("Yumruğun temas anından önceki savurma / uzanma gecikmesi (saniye).")]
@@ -165,29 +171,28 @@ public class PlayerController : MonoBehaviour
     private Coroutine ultiSoundCoroutine;
     private Coroutine ultiCooldownCoroutine;
 
-    [Header("Ulti Çılgın Işık Şovu (Crazy Light Show)")]
-    [Tooltip("Ulti atılırken sahadaki ışıkların renkli ve çılgın bir parti şovuna dönüşmesini sağlar")]
+    [Header("Ulti Işık & Atmosfer Efekti (Cinematic Ulti Lighting)")]
+    [Tooltip("Ulti atılırken sahadaki ışıkların estetik ve sinematik bir renk atmosferine geçmesini sağlar")]
     [SerializeField] private bool enableUltiLightShow = true;
-    [Tooltip("Işıkların renk değiştirme ve yanıp sönme (strobe) hızı")]
-    [SerializeField] private float ultiLightSpeed = 7f;
-    [Tooltip("Ulti sırasında arena ışıklarının parlaklık çarpanı")]
-    [SerializeField] private float ultiLightIntensityMultiplier = 2.2f;
-    [Tooltip("Ulti sırasında oyuncu üzerinde doğacak parlak kahraman aura ışığı")]
+    [Tooltip("Işıkların renk değiştirme ve yumuşak dalgalanma hızı (Gözü yormayan sinematik tempo)")]
+    [SerializeField] private float ultiLightSpeed = 2.0f;
+    [Tooltip("Ulti sırasında arena ışıklarının parlaklık çarpanı (Gözü almaması için dengeli seviye)")]
+    [SerializeField] private float ultiLightIntensityMultiplier = 1.2f;
+    [Tooltip("Ulti sırasında oyuncu üzerinde doğacak dengeli kahraman aura ışığı")]
     [SerializeField] private bool spawnUltiHeroLight = true;
 
     private Coroutine ultiLightCoroutine;
     private GameObject ultiHeroLightObj;
 
-    private readonly Color[] crazyUltiColors = new Color[]
+    // Gözü yormayan, asil ve sinematik dövüş aurası renk paleti (Kör edici neonlar yerine estetik dengeli tonlar)
+    private readonly Color[] ultiColors = new Color[]
     {
-        new Color(1.0f, 0.05f, 0.35f), // Neon Kırmızı / Fuşya
-        new Color(0.65f, 0.0f, 1.0f),  // Elektrik Moru
-        new Color(0.0f, 0.95f, 1.0f),  // Neon Turkuaz / Buz Mavisi
-        new Color(1.0f, 0.85f, 0.0f),  // Parlak Altın Sarısı
-        new Color(0.0f, 1.0f, 0.45f),  // Asit Yeşili
-        new Color(1.0f, 0.25f, 0.0f),  // Alev Turuncusu
-        new Color(1.0f, 0.0f, 0.85f),  // Manyak Magenta
-        new Color(0.1f, 0.55f, 1.0f)   // Kobalt Mavisi
+        new Color(0.95f, 0.72f, 0.28f), // Sıcak Şampanya / Altın Kehribar (Asil Şampiyon Aurası)
+        new Color(0.58f, 0.35f, 0.85f), // Mistik Ametist Moru (Gözü Yormayan Derin Ton)
+        new Color(0.22f, 0.58f, 0.90f), // Göksel Safir Mavisi (Yumuşak Göksel Işık)
+        new Color(0.90f, 0.45f, 0.28f), // Sıcak Gün Batımı / Mercan (Dengeli Sıcak Ton)
+        new Color(0.25f, 0.75f, 0.72f), // Yumuşak Zümrüt Turkuaz (Doğal Parlama)
+        new Color(0.82f, 0.25f, 0.40f)  // Asil Yakut Kırmızısı (Doygun ve Zarif)
     };
 
     [SerializeField] Image playerHealthBar;
@@ -195,6 +200,8 @@ public class PlayerController : MonoBehaviour
     void Awake()
     {
         usingUlti = true; // Ulti oyun başında hazır değildir; oyun modu seçildikten sonra yüklenmeye başlar
+        if (ultiLightIntensityMultiplier > 1.5f) ultiLightIntensityMultiplier = 1.2f;
+        if (ultiLightSpeed > 3.5f) ultiLightSpeed = 2.0f;
 #if UNITY_EDITOR
         if (handsPrefab == null)
         {
@@ -218,6 +225,7 @@ public class PlayerController : MonoBehaviour
 
         punchDamage = 10f;
         uppercutDamage = 20f;
+        punchStepDistance = 0f;
 
         if (uiManager == null)
         {
@@ -313,6 +321,9 @@ public class PlayerController : MonoBehaviour
 
     void Update()
     {
+        // Oyun duraklatıldıysa (Pause) hiçbir girdi veya hareket işlenmesin
+        if (Time.timeScale == 0f) return;
+
         // Oyuncu öldüyse, ayağa kalkıyorsa veya tüm dalgalar bittiyse hareket edip yumruk atamasın
         if (isDead || isGameCompleted || isStandingUp) return;
 
@@ -335,9 +346,17 @@ public class PlayerController : MonoBehaviour
             if (!isBlocking && !isPunching && !isHitStunned)
             {
                 isBlocking = true;
+                currentMoveAnim = MoveAnim.None;
                 if (playerAnim != null)
                 {
-                    playerAnim.CrossFadeInFixedTime("Center Block", 0.1f);
+                    playerAnim.SetBool("isBlocking", true);
+                    playerAnim.SetBool("Forward_Move", false);
+                    playerAnim.SetBool("Backward_Move", false);
+                    playerAnim.SetBool("Left_Move", false);
+                    playerAnim.SetBool("Right_Move", false);
+                    // Önce Blocking giriş animasyonunu oynat, ardından Block Idle'a geç
+                    if (blockingCoroutine != null) StopCoroutine(blockingCoroutine);
+                    blockingCoroutine = StartCoroutine(BlockingEnterRoutine());
                 }
             }
         }
@@ -346,9 +365,20 @@ public class PlayerController : MonoBehaviour
             if (isBlocking)
             {
                 isBlocking = false;
+                currentMoveAnim = MoveAnim.None;
+                if (playerAnim != null)
+                {
+                    playerAnim.SetBool("isBlocking", false);
+                }
+                if (blockingCoroutine != null)
+                {
+                    StopCoroutine(blockingCoroutine);
+                    blockingCoroutine = null;
+                }
                 if (playerAnim != null && !isHitStunned)
                 {
                     playerAnim.CrossFadeInFixedTime("Idle", 0.15f);
+                    currentMoveAnim = MoveAnim.Idle;
                 }
             }
         }
@@ -468,10 +498,10 @@ public class PlayerController : MonoBehaviour
         float h = 0f;
         float v = 0f;
 
-        if (Input.GetKey(KeyCode.D)) h -= 1f;
-        if (Input.GetKey(KeyCode.A)) h += 1f;
         if (Input.GetKey(KeyCode.W)) v -= 1f;
         if (Input.GetKey(KeyCode.S)) v += 1f;
+        if (Input.GetKey(KeyCode.A)) h += 1f;
+        if (Input.GetKey(KeyCode.D)) h -= 1f;
 
         // Mobil Joystick Girişi
         if (joystick == null)
@@ -533,31 +563,43 @@ public class PlayerController : MonoBehaviour
             transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * rotationSpeed);
         }
 
-        // 3. Animasyon parametrelerini güncelle
+        // 3. Animasyon: Kullanıcının kendi belirlediği SetBool sistemi
         if (playerAnim != null)
         {
-            // Sağa hareket (D tuşu, h < -0.1f) -> rightMove animasyonu
-            if (h < -0.1f)
+            if (v < -0.1f) // W veya Joystick İleri
             {
-                playerAnim.SetBool("rightMove", true);
-                playerAnim.SetBool("leftMove", false);
+                playerAnim.SetBool("Forward_Move", true);
+                playerAnim.SetBool("Left_Move", false);
+                playerAnim.SetBool("Right_Move", false);
+                playerAnim.SetBool("Backward_Move", false);
             }
-            // Sola hareket (A tuşu, h > 0.1f) -> leftMove animasyonu
-            else if (h > 0.1f)
+            else if (h > 0.1f) // A veya Joystick Sol
             {
-                playerAnim.SetBool("leftMove", true);
-                playerAnim.SetBool("rightMove", false);
+                playerAnim.SetBool("Left_Move", true);
+                playerAnim.SetBool("Forward_Move", false);
+                playerAnim.SetBool("Right_Move", false);
+                playerAnim.SetBool("Backward_Move", false);
             }
-            // Düz ileri veya geri giderken adım animasyonunu oynat
-            else if (Mathf.Abs(v) > 0.1f)
+            else if (h < -0.1f) // D veya Joystick Sağ
             {
-                playerAnim.SetBool("leftMove", false);
-                playerAnim.SetBool("rightMove", true);
+                playerAnim.SetBool("Right_Move", true);
+                playerAnim.SetBool("Forward_Move", false);
+                playerAnim.SetBool("Left_Move", false);
+                playerAnim.SetBool("Backward_Move", false);
+            }
+            else if (v > 0.1f) // S veya Joystick Geri
+            {
+                playerAnim.SetBool("Backward_Move", true);
+                playerAnim.SetBool("Forward_Move", false);
+                playerAnim.SetBool("Left_Move", false);
+                playerAnim.SetBool("Right_Move", false);
             }
             else
             {
-                playerAnim.SetBool("leftMove", false);
-                playerAnim.SetBool("rightMove", false);
+                playerAnim.SetBool("Backward_Move", false);
+                playerAnim.SetBool("Forward_Move", false);
+                playerAnim.SetBool("Left_Move", false);
+                playerAnim.SetBool("Right_Move", false);
             }
         }
     }
@@ -577,6 +619,47 @@ public class PlayerController : MonoBehaviour
         return transform.forward;
     }
 
+    /// <summary>
+    /// Blok başladığında Blocking giriş animasyonunu oynatır,
+    /// animasyon bitince Block Idle pozuna geçer.
+    /// Oyuncu bloktan çıkarsa Coroutine otomatik durdurulur.
+    /// </summary>
+    private IEnumerator BlockingEnterRoutine()
+    {
+        if (playerAnim == null) yield break;
+
+        // 1. Blocking giriş animasyonunu oynat
+        playerAnim.CrossFadeInFixedTime("Blocking", 0.08f);
+
+        // 2. Animator'ın state'e geçmesi için bir kare bekle
+        yield return null;
+
+        // 3. "Blocking" animasyonunun bitmesini bekle
+        float timeout = 2.0f; // Maksimum bekleme süresi (donmayı önler)
+        float elapsed = 0f;
+        while (elapsed < timeout)
+        {
+            // Bloktan çıkıldıysa dur (isBlocking false oldu)
+            if (!isBlocking) yield break;
+
+            AnimatorStateInfo info = playerAnim.GetCurrentAnimatorStateInfo(0);
+            if (info.IsName("Blocking") && info.normalizedTime >= 0.85f)
+            {
+                break; // Animasyon bitti
+            }
+            elapsed += Time.deltaTime;
+            yield return null;
+        }
+
+        // 4. Hâlâ blok yapıyorsa Block Idle'a geç
+        if (isBlocking && playerAnim != null)
+        {
+            playerAnim.CrossFadeInFixedTime("Block Idle", 0.1f);
+        }
+
+        blockingCoroutine = null;
+    }
+
     void ExecutePunch()
     {
         if (isPunching || isHitStunned || isBlocking || isDead || isGameCompleted || isStandingUp) return;
@@ -584,18 +667,27 @@ public class PlayerController : MonoBehaviour
 
         isPunching = true;
         hasHitCurrentPunch = false;
+        currentMoveAnim = MoveAnim.None; // Hareket animasyonunu kes
 
         // Yumruk atarken yakında rakip varsa yüzünü doğrudan rakibe hizala
         FaceOpponentOnPunch();
 
         int fistIndex = isPunchRight ? 1 : 0;
+        // isPunchRight=true → Sol yumruk (Left Punch), isPunchRight=false → Sağ yumruk (Right Punch)
+        string animName = isPunchRight ? "Left Punch" : "Right Punch";
         string triggerName = isPunchRight ? "PunchLeft" : "PunchRight";
 
         if (playerAnim != null)
         {
+            // Hareket bool'larını sıfırla ki yumruk hemen devreye girsin
+            playerAnim.SetBool("Forward_Move", false);
+            playerAnim.SetBool("Backward_Move", false);
+            playerAnim.SetBool("Left_Move", false);
+            playerAnim.SetBool("Right_Move", false);
+
             playerAnim.ResetTrigger("PunchLeft");
             playerAnim.ResetTrigger("PunchRight");
-            playerAnim.SetTrigger(triggerName);
+            playerAnim.CrossFadeInFixedTime(animName, 0.05f);
         }
 
         // Sıradaki yumruğu değiştir (Sağ -> Sol -> Sağ)
@@ -616,11 +708,17 @@ public class PlayerController : MonoBehaviour
 
         isPunching = true;
         hasHitCurrentPunch = false;
+        currentMoveAnim = MoveAnim.None; // Hareket animasyonunu kes
 
         FaceOpponentOnPunch();
 
         if (playerAnim != null)
         {
+            playerAnim.SetBool("Forward_Move", false);
+            playerAnim.SetBool("Backward_Move", false);
+            playerAnim.SetBool("Left_Move", false);
+            playerAnim.SetBool("Right_Move", false);
+            playerAnim.ResetTrigger("Uppercut");
             playerAnim.CrossFadeInFixedTime("Uppercut", 0.10f);
         }
 
@@ -645,6 +743,11 @@ public class PlayerController : MonoBehaviour
 
         if (playerAnim != null)
         {
+            playerAnim.SetBool("Forward_Move", false);
+            playerAnim.SetBool("Backward_Move", false);
+            playerAnim.SetBool("Left_Move", false);
+            playerAnim.SetBool("Right_Move", false);
+            playerAnim.ResetTrigger("Ulti");
             playerAnim.CrossFadeInFixedTime("Ulti", 0.2f);
         }
 
@@ -736,28 +839,6 @@ public class PlayerController : MonoBehaviour
         }
         ultiHandsCoroutine = StartCoroutine(SpawnUltiHandsRoutine());
 
-        // 1. Öne doğru hamle
-        float stepDuration = 0.20f;
-        if (punchStepDistance > 0f)
-        {
-            float stepTimer = 0f;
-            Vector3 startPos = new Vector3(transform.position.x, standingYPosition, transform.position.z);
-            Vector3 fwd = transform.forward;
-            fwd.y = 0f;
-            Vector3 stepTarget = startPos + fwd.normalized * (punchStepDistance * 1.5f);
-            stepTarget.y = standingYPosition;
-            while (stepTimer < stepDuration)
-            {
-                stepTimer += Time.deltaTime;
-                float t = Mathf.Clamp01(stepTimer / stepDuration);
-                float smoothT = Mathf.SmoothStep(0f, 1f, t);
-                Vector3 newPos = Vector3.Lerp(startPos, stepTarget, smoothT);
-                newPos.y = standingYPosition;
-                newPos = ResolveCollisionWithEnemies(newPos);
-                transform.position = newPos;
-                yield return null;
-            }
-        }
 
         // 2. Vuruşun temas anına kadar bekleme süresi (~0.7 saniye)
         yield return new WaitForSeconds(0.7f);
@@ -976,61 +1057,62 @@ public class PlayerController : MonoBehaviour
         Color origDirColor = dirLight != null ? dirLight.color : Color.white;
         float origDirIntensity = dirLight != null ? dirLight.intensity : 1f;
 
-        // 2. Oyuncunun üzerinde çılgın parlak bir Hero Aura Işığı oluştur
+        // 2. Oyuncunun üzerinde dengeli ve gözü yormayan Hero Aura Işığı oluştur (Kör etmeyen yumuşak ışık)
         Light heroLight = null;
         if (spawnUltiHeroLight)
         {
             if (ultiHeroLightObj != null) Destroy(ultiHeroLightObj);
             ultiHeroLightObj = new GameObject("Ulti_Hero_Aura_Light");
-            ultiHeroLightObj.transform.position = transform.position + Vector3.up * 1.5f;
+            ultiHeroLightObj.transform.position = transform.position + Vector3.up * 1.2f;
             ultiHeroLightObj.transform.SetParent(transform);
 
             heroLight = ultiHeroLightObj.AddComponent<Light>();
             heroLight.type = LightType.Point;
-            heroLight.range = 15f;
-            heroLight.intensity = 22f;
-            heroLight.color = crazyUltiColors[0];
+            heroLight.range = 6f;
+            heroLight.intensity = 2.5f;
+            heroLight.color = ultiColors[0];
         }
 
-        Debug.Log("<color=magenta>[ÇILGIN IŞIK ŞOVU!]</color> Arenada fırtınalı neon ışık şovu başladı!");
+        Debug.Log("<color=cyan>[ULTİ IŞIK EFEKTİ]</color> Arenada sinematik ve dengeli ışık atmosferi başladı!");
 
         float timer = 0f;
         while (isCastingUlti)
         {
             timer += Time.deltaTime * ultiLightSpeed;
 
-            // Directional Light: Ortamı karartıp mistik mor/kızıl bir havaya sok, point light'lar parlasın
+            // Directional Light: Sahneyi hafifçe sinematik loşlaştır, renkler belirginleşsin ama saha ve karakterler net görünsün
             if (dirLight != null)
             {
-                float dirHue = (timer * 0.08f) % 1f;
-                dirLight.color = Color.HSVToRGB(dirHue, 0.75f, 0.35f);
-                dirLight.intensity = origDirIntensity * 0.3f;
+                dirLight.color = Color.Lerp(origDirColor, new Color(0.85f, 0.88f, 1f), 0.2f);
+                dirLight.intensity = origDirIntensity * 0.75f;
             }
 
-            // Hero Işığı: Oyuncunun etrafında süper hızlı neon renk geçişi ve nabız gibi atma
+            // Hero Işığı: Oyuncunun etrafında yumuşak geçişli asil şampiyon aurası (kör etmeyen zarif parıltı)
             if (heroLight != null)
             {
-                float heroHue = (timer * 0.45f) % 1f;
-                heroLight.color = Color.HSVToRGB(heroHue, 1f, 1f);
-                heroLight.intensity = 18f + 14f * Mathf.Sin(timer * 5f);
+                int heroC1 = Mathf.FloorToInt(timer * 0.8f) % ultiColors.Length;
+                int heroC2 = (heroC1 + 1) % ultiColors.Length;
+                float heroT = (timer * 0.8f) - Mathf.Floor(timer * 0.8f);
+                heroLight.color = Color.Lerp(ultiColors[heroC1], ultiColors[heroC2], heroT);
+                heroLight.intensity = 2.5f + 0.8f * Mathf.Sin(timer * 2.2f);
             }
 
-            // Arena Point Lights: Birbirinden farklı fazlarda dalga dalga çılgın renk ve flaş
+            // Arena Point Lights: Yumuşak renk geçişi ve gözü rahatlatan hafif dalgalanma (flaş/strobe yok)
             for (int i = 0; i < pointLights.Count; i++)
             {
                 Light pl = pointLights[i];
                 if (pl == null) continue;
 
-                float phase = timer + (i * 0.5f);
-                int c1 = Mathf.FloorToInt(phase) % crazyUltiColors.Length;
-                int c2 = (c1 + 1) % crazyUltiColors.Length;
+                float phase = timer + (i * 0.35f);
+                int c1 = Mathf.FloorToInt(phase) % ultiColors.Length;
+                int c2 = (c1 + 1) % ultiColors.Length;
                 float t = phase - Mathf.Floor(phase);
 
-                pl.color = Color.Lerp(crazyUltiColors[c1], crazyUltiColors[c2], t);
+                pl.color = Color.Lerp(ultiColors[c1], ultiColors[c2], t);
 
                 float baseInt = origIntensities.ContainsKey(pl) ? origIntensities[pl] : 10f;
-                float strobe = 0.85f + 0.55f * Mathf.Sin(timer * 6f + i * 1.6f);
-                pl.intensity = baseInt * ultiLightIntensityMultiplier * strobe;
+                float gentlePulse = 1.0f + 0.12f * Mathf.Sin(timer * 2.2f + i * 0.75f);
+                pl.intensity = baseInt * ultiLightIntensityMultiplier * gentlePulse;
             }
 
             yield return null;
@@ -1074,33 +1156,10 @@ public class PlayerController : MonoBehaviour
 
     IEnumerator UppercutRoutine()
     {
-        // 1. Öne doğru boksör hamlesi
-        float stepDuration = 0.14f;
-        if (punchStepDistance > 0f)
+        // 1. Aparkat kolunun yükselme ve savrulma hazırlığı (Windup)
+        if (uppercutWindupTime > 0f)
         {
-            float stepTimer = 0f;
-            Vector3 startPos = new Vector3(transform.position.x, standingYPosition, transform.position.z);
-            Vector3 fwd = transform.forward;
-            fwd.y = 0f;
-            Vector3 stepTarget = startPos + fwd.normalized * (punchStepDistance * 1.25f);
-            stepTarget.y = standingYPosition;
-            while (stepTimer < stepDuration)
-            {
-                stepTimer += Time.deltaTime;
-                float t = Mathf.Clamp01(stepTimer / stepDuration);
-                float smoothT = Mathf.SmoothStep(0f, 1f, t);
-                Vector3 newPos = Vector3.Lerp(startPos, stepTarget, smoothT);
-                newPos.y = standingYPosition;
-                newPos = ResolveCollisionWithEnemies(newPos);
-                transform.position = newPos;
-                yield return null;
-            }
-        }
-
-        // 2. Aparkat kolunun yükselme ve savrulma hazırlığı (Windup)
-        if (uppercutWindupTime > stepDuration)
-        {
-            yield return new WaitForSeconds(uppercutWindupTime - stepDuration);
+            yield return new WaitForSeconds(uppercutWindupTime);
         }
 
         // 3. Aparkatın zirveye ulaştığı temas penceresi
@@ -1122,6 +1181,7 @@ public class PlayerController : MonoBehaviour
         if (playerAnim != null && !isDead && !isHitStunned && !isGameCompleted)
         {
             playerAnim.CrossFadeInFixedTime("Idle", 0.15f);
+            currentMoveAnim = MoveAnim.Idle;
         }
 
         nextPunchAvailableTime = Time.time + punchCooldown;
@@ -1246,7 +1306,9 @@ public class PlayerController : MonoBehaviour
             {
                 isPunching = false;
                 isPunchActive = false;
+                currentMoveAnim = MoveAnim.None;
                 playerAnim.CrossFadeInFixedTime("Idle", 0.15f);
+                currentMoveAnim = MoveAnim.Idle;
             }
         }
     }
@@ -1270,10 +1332,12 @@ public class PlayerController : MonoBehaviour
 
         if (playerAnim != null)
         {
+            currentMoveAnim = MoveAnim.None;
             playerAnim.SetBool("isDeadEnemy", false);
             playerAnim.SetBool("leftMove", false);
             playerAnim.SetBool("rightMove", false);
             playerAnim.CrossFadeInFixedTime("Idle", 0.2f);
+            currentMoveAnim = MoveAnim.Idle;
         }
 
         isPunching = false;
@@ -1367,6 +1431,7 @@ public class PlayerController : MonoBehaviour
         isBlocking = false;
         playerDoBlock = 0;
         hasHitCurrentPunch = false;
+        if (blockingCoroutine != null) { StopCoroutine(blockingCoroutine); blockingCoroutine = null; }
 
         if (joystick != null)
         {
@@ -1395,46 +1460,25 @@ public class PlayerController : MonoBehaviour
 
         if (playerAnim != null)
         {
+            currentMoveAnim = MoveAnim.None;
             playerAnim.SetBool("isDead", false);
             playerAnim.SetBool("isDeadEnemy", false);
             playerAnim.SetBool("leftMove", false);
             playerAnim.SetBool("rightMove", false);
             playerAnim.CrossFadeInFixedTime("Idle", 0.1f);
+            currentMoveAnim = MoveAnim.Idle;
         }
     }
 
     IEnumerator PunchRoutine(int fistIndex)
     {
-        float stepDuration = 0.14f;
-        // 1. Boksör Hamlesi (Step-in): Yumruk atarken öne doğru hafif ve doğal bir adım at
-        if (punchStepDistance > 0f)
+        // 1. Yumruk uzanma / savrulma gecikmesi (Windup - animasyonun hedefe doğru ilerlemesi)
+        if (punchWindupTime > 0f)
         {
-            float stepTimer = 0f;
-            Vector3 startPos = new Vector3(transform.position.x, standingYPosition, transform.position.z);
-            Vector3 fwd = transform.forward;
-            fwd.y = 0f;
-            Vector3 stepTarget = startPos + fwd.normalized * punchStepDistance;
-            stepTarget.y = standingYPosition;
-            while (stepTimer < stepDuration)
-            {
-                stepTimer += Time.deltaTime;
-                float t = Mathf.Clamp01(stepTimer / stepDuration);
-                float smoothT = Mathf.SmoothStep(0f, 1f, t);
-                Vector3 newPos = Vector3.Lerp(startPos, stepTarget, smoothT);
-                newPos.y = standingYPosition;
-                newPos = ResolveCollisionWithEnemies(newPos);
-                transform.position = newPos;
-                yield return null;
-            }
+            yield return new WaitForSeconds(punchWindupTime);
         }
 
-        // 2. Yumruk uzanma / savrulma gecikmesi (Windup - animasyonun hedefe doğru ilerlemesi)
-        if (punchWindupTime > stepDuration)
-        {
-            yield return new WaitForSeconds(punchWindupTime - stepDuration);
-        }
-
-        // 3. Yumruk temas arama penceresi
+        // 2. Yumruk temas arama penceresi
         isPunchActive = true;
         float activeTimer = 0f;
 
@@ -1450,9 +1494,8 @@ public class PlayerController : MonoBehaviour
 
         isPunchActive = false;
 
-        // 4. Kolun geri çekilmesi ve boksörün garda dönüş süresi
-        float totalElapsed = Mathf.Max(punchWindupTime, stepDuration) + activeTimer;
-        float remainingDuration = punchDuration - totalElapsed;
+        // 3. Kolun geri çekilmesi ve boksörün garda dönüş süresi
+        float remainingDuration = punchDuration - (punchWindupTime + activeTimer);
         if (remainingDuration > 0f)
         {
             yield return new WaitForSeconds(remainingDuration);
@@ -1461,6 +1504,7 @@ public class PlayerController : MonoBehaviour
         if (playerAnim != null && !isDead && !isHitStunned && !isGameCompleted)
         {
             playerAnim.CrossFadeInFixedTime("Idle", 0.12f);
+            currentMoveAnim = MoveAnim.Idle;
         }
 
         // Yumruk tamamen bitti
@@ -1572,7 +1616,7 @@ public class PlayerController : MonoBehaviour
         Gizmos.DrawWireSphere(transform.position + Vector3.up * 0.9f, playerBodyRadius);
     }
 
-    public void TakeDamage(float damageAmount, bool isUppercut = false)
+    public void TakeDamage(float damageAmount, bool isUppercut = false, bool isFromRight = true)
     {
         if (isDead) return;
 
@@ -1623,7 +1667,7 @@ public class PlayerController : MonoBehaviour
             {
                 StopCoroutine(hitStunRoutine);
             }
-            hitStunRoutine = StartCoroutine(PlayerHitStunRoutine(isUppercut || damageAmount >= 20f));
+            hitStunRoutine = StartCoroutine(PlayerHitStunRoutine(isUppercut || damageAmount >= 20f, isFromRight));
         }
     }
 
@@ -1655,9 +1699,10 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    private IEnumerator PlayerHitStunRoutine(bool isHeavyHit)
+    private IEnumerator PlayerHitStunRoutine(bool isHeavyHit, bool isFromRight = true)
     {
         isHitStunned = true;
+        currentMoveAnim = MoveAnim.None; // Hareket animasyonunu kes
 
         if (playerAnim != null)
         {
@@ -1666,15 +1711,20 @@ public class PlayerController : MonoBehaviour
 
             if (isHeavyHit)
             {
+                // Ağır vuruş (aparkat veya yüksek hasar): Left Damage animasyonu (mirrored)
                 playerAnim.ResetTrigger("GetHit");
                 playerAnim.SetTrigger("GetHeadHit");
-                playerAnim.CrossFadeInFixedTime("Head Hit", 0.06f);
+                playerAnim.CrossFadeInFixedTime("Left Damage", 0.06f);
             }
             else
             {
+                // Normal vuruş: saldırının geldiği tarafa göre animasyon seç
+                // Düşman right punch → oyuncunun sağ tarafına çarpar → Right Damage
+                // Düşman left punch  → oyuncunun sol tarafına çarpar → Left Damage
                 playerAnim.ResetTrigger("GetHeadHit");
                 playerAnim.SetTrigger("GetHit");
-                playerAnim.CrossFadeInFixedTime("Hit", 0.06f);
+                string damageAnim = isFromRight ? "Right Damage" : "Left Damage";
+                playerAnim.CrossFadeInFixedTime(damageAnim, 0.06f);
             }
         }
 
@@ -1684,6 +1734,7 @@ public class PlayerController : MonoBehaviour
         if (!isDead && !isGameCompleted && playerAnim != null)
         {
             playerAnim.CrossFadeInFixedTime("Idle", 0.15f);
+            currentMoveAnim = MoveAnim.Idle;
         }
 
         isHitStunned = false;
@@ -1706,6 +1757,7 @@ public class PlayerController : MonoBehaviour
 
         isBlocking = false;
         playerDoBlock = 0;
+        if (blockingCoroutine != null) { StopCoroutine(blockingCoroutine); blockingCoroutine = null; }
         StopCoroutine(nameof(UltiRoutine));
         if (ultiHandsCoroutine != null)
         {
@@ -1723,6 +1775,7 @@ public class PlayerController : MonoBehaviour
 
         if (playerAnim != null)
         {
+            currentMoveAnim = MoveAnim.None;
             playerAnim.SetBool("isDead", true);
             playerAnim.SetBool("leftMove", false);
             playerAnim.SetBool("rightMove", false);
@@ -1731,7 +1784,8 @@ public class PlayerController : MonoBehaviour
             playerAnim.ResetTrigger("GetHeadHit");
             playerAnim.ResetTrigger("PunchLeft");
             playerAnim.ResetTrigger("PunchRight");
-            playerAnim.CrossFadeInFixedTime("Knockout", 0.08f);
+            // Aparkat nakavt animasyonu (Uppercut Nakavt) oynatılır
+            playerAnim.CrossFadeInFixedTime("Uppercut Nakavt", 0.08f);
         }
 
         // Tüm düşmanlara oyuncunun öldüğünü bildir (Düşmanlar Show Pose'a geçsin)
@@ -1771,7 +1825,7 @@ public class PlayerController : MonoBehaviour
             if (playerAnim != null)
             {
                 AnimatorStateInfo stateInfo = playerAnim.GetCurrentAnimatorStateInfo(0);
-                if ((stateInfo.IsName("Knockout") || stateInfo.IsName("Defeat")) && stateInfo.normalizedTime >= 0.95f)
+                if ((stateInfo.IsName("Uppercut Nakavt") || stateInfo.IsName("Defeat")) && stateInfo.normalizedTime >= 0.95f)
                 {
                     break;
                 }
@@ -1847,12 +1901,13 @@ public class PlayerController : MonoBehaviour
 
         if (playerAnim != null)
         {
-            playerAnim.CrossFadeInFixedTime("Idle", 0.1f);
+            currentMoveAnim = MoveAnim.None;
             playerAnim.SetBool("isDead", false);
             playerAnim.SetBool("isDeadEnemy", false);
             playerAnim.SetBool("leftMove", false);
             playerAnim.SetBool("rightMove", false);
             playerAnim.CrossFadeInFixedTime("Idle", 0.15f);
+            currentMoveAnim = MoveAnim.Idle;
         }
     }
 
@@ -1926,7 +1981,9 @@ public class PlayerController : MonoBehaviour
         if (playerAnim != null)
         {
             playerAnim.SetBool("isDead", false);
+            currentMoveAnim = MoveAnim.None;
             playerAnim.CrossFadeInFixedTime("Idle", 0.2f);
+            currentMoveAnim = MoveAnim.Idle;
         }
 
         // Tüm düşmanlara oyuncunun yeniden doğduğunu bildir (Düşmanlar Show Pose'dan çıkıp Idle'a dönsün)
@@ -2012,14 +2069,7 @@ public class PlayerController : MonoBehaviour
     {
         if (!isPunching && !isHitStunned)
         {
-            if (!usingUlti)
-            {
-                ExecuteUlti();
-            }
-            else
-            {
-                ExecutePunch();
-            }
+            ExecutePunch();
         }
     }
 
