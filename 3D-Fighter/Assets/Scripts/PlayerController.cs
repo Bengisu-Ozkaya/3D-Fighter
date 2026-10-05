@@ -1178,11 +1178,7 @@ public class PlayerController : MonoBehaviour
         // 4. Kolun geri çekilmesi ve garda dönüş
         yield return new WaitForSeconds(0.35f);
 
-        if (playerAnim != null && !isDead && !isHitStunned && !isGameCompleted)
-        {
-            playerAnim.CrossFadeInFixedTime("Idle", 0.15f);
-            currentMoveAnim = MoveAnim.Idle;
-        }
+        currentMoveAnim = MoveAnim.Idle;
 
         nextPunchAvailableTime = Time.time + punchCooldown;
         isPunching = false;
@@ -1501,13 +1497,8 @@ public class PlayerController : MonoBehaviour
             yield return new WaitForSeconds(remainingDuration);
         }
 
-        if (playerAnim != null && !isDead && !isHitStunned && !isGameCompleted)
-        {
-            playerAnim.CrossFadeInFixedTime("Idle", 0.12f);
-            currentMoveAnim = MoveAnim.Idle;
-        }
-
         // Yumruk tamamen bitti
+        currentMoveAnim = MoveAnim.Idle;
         nextPunchAvailableTime = Time.time + punchCooldown;
         isPunching = false;
         punchRoutine = null;
