@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 using TMPro;
 
 public class UIManager : MonoBehaviour
@@ -15,6 +16,9 @@ public class UIManager : MonoBehaviour
     [SerializeField] private GameObject pausePanel;
     [SerializeField] private GameObject pauseButton;
     [SerializeField] private GameObject ultiButton;
+    [SerializeField] private GameObject punchButton;
+    [SerializeField] private GameObject uppercutButton;
+    [SerializeField] private GameObject blockButton;
     [SerializeField] private TMP_Text playerHealthText;
 
     [Header("Referanslar")]
@@ -71,10 +75,28 @@ public class UIManager : MonoBehaviour
             FindUltiButton();
         }
 
+        if (punchButton == null)
+        {
+            FindPunchButton();
+        }
+
+        if (uppercutButton == null)
+        {
+            FindUppercutButton();
+        }
+
+        if (blockButton == null)
+        {
+            FindBlockButton();
+        }
+
         BindGameOverButtons();
         BindVictoryButtons();
         BindPauseButtons();
         BindUltiButton();
+        BindPunchButton();
+        BindUppercutButton();
+        BindBlockButton();
     }
 
     void Start()
@@ -240,6 +262,128 @@ public class UIManager : MonoBehaviour
                 btn.onClick.RemoveListener(playerController.UltiButton);
                 btn.onClick.AddListener(playerController.UltiButton);
             }
+        }
+    }
+
+    void FindPunchButton()
+    {
+        Canvas canvas = FindObjectOfType<Canvas>();
+        if (canvas != null)
+        {
+            Button[] allButtons = canvas.GetComponentsInChildren<Button>(true);
+            foreach (var btn in allButtons)
+            {
+                if (btn.name.Equals("Punch Button", System.StringComparison.OrdinalIgnoreCase) ||
+                    btn.name.Equals("PunchButton", System.StringComparison.OrdinalIgnoreCase) ||
+                    btn.name.Equals("Vurus Butonu", System.StringComparison.OrdinalIgnoreCase) ||
+                    btn.name.Equals("hitButton", System.StringComparison.OrdinalIgnoreCase) ||
+                    btn.name.Contains("Punch") ||
+                    btn.name.Contains("Hit"))
+                {
+                    punchButton = btn.gameObject;
+                    break;
+                }
+            }
+        }
+    }
+
+    void FindUppercutButton()
+    {
+        Canvas canvas = FindObjectOfType<Canvas>();
+        if (canvas != null)
+        {
+            Button[] allButtons = canvas.GetComponentsInChildren<Button>(true);
+            foreach (var btn in allButtons)
+            {
+                if (btn.name.Equals("Uppercut Button", System.StringComparison.OrdinalIgnoreCase) ||
+                    btn.name.Equals("UppercutButton", System.StringComparison.OrdinalIgnoreCase) ||
+                    btn.name.Equals("Aparkat Butonu", System.StringComparison.OrdinalIgnoreCase) ||
+                    btn.name.Contains("Uppercut"))
+                {
+                    uppercutButton = btn.gameObject;
+                    break;
+                }
+            }
+        }
+    }
+
+    void FindBlockButton()
+    {
+        Canvas canvas = FindObjectOfType<Canvas>();
+        if (canvas != null)
+        {
+            // Block button might be an EventTrigger or a Button, look through transforms
+            Transform[] allTransforms = canvas.GetComponentsInChildren<Transform>(true);
+            foreach (var t in allTransforms)
+            {
+                if (t.name.Equals("Block Button", System.StringComparison.OrdinalIgnoreCase) ||
+                    t.name.Equals("BlockButton", System.StringComparison.OrdinalIgnoreCase) ||
+                    t.name.Equals("Blok Butonu", System.StringComparison.OrdinalIgnoreCase) ||
+                    (t.name.Contains("Block") && (t.GetComponent<Button>() != null || t.GetComponent<EventTrigger>() != null || t.GetComponent<Image>() != null)))
+                {
+                    blockButton = t.gameObject;
+                    break;
+                }
+            }
+        }
+    }
+
+    void BindPunchButton()
+    {
+        if (playerController == null) playerController = FindObjectOfType<PlayerController>();
+        if (punchButton != null && playerController != null)
+        {
+            Button btn = punchButton.GetComponent<Button>();
+            if (btn != null)
+            {
+                btn.onClick.RemoveListener(playerController.PunchButton);
+                btn.onClick.AddListener(playerController.PunchButton);
+            }
+        }
+    }
+
+    void BindUppercutButton()
+    {
+        if (playerController == null) playerController = FindObjectOfType<PlayerController>();
+        if (uppercutButton != null && playerController != null)
+        {
+            Button btn = uppercutButton.GetComponent<Button>();
+            if (btn != null)
+            {
+                btn.onClick.RemoveListener(playerController.UppercutButton);
+                btn.onClick.AddListener(playerController.UppercutButton);
+            }
+        }
+    }
+
+    void BindBlockButton()
+    {
+        if (playerController == null) playerController = FindObjectOfType<PlayerController>();
+        if (blockButton != null && playerController != null)
+        {
+            EventTrigger trigger = blockButton.GetComponent<EventTrigger>();
+            if (trigger == null)
+            {
+                trigger = blockButton.AddComponent<EventTrigger>();
+            }
+
+            // Remove previous PlayerController events to avoid duplicate calls, but keep others
+            trigger.triggers.RemoveAll(entry => 
+            {
+                // Simple cleanup: we can just clear them all if we are setting it up dynamically
+                // But to be safe, just clear all triggers for PointerDown/PointerUp to reset our logic
+                return entry.eventID == EventTriggerType.PointerDown || entry.eventID == EventTriggerType.PointerUp;
+            });
+
+            EventTrigger.Entry pointerDown = new EventTrigger.Entry();
+            pointerDown.eventID = EventTriggerType.PointerDown;
+            pointerDown.callback.AddListener((data) => { if (playerController != null) playerController.Blocking(1); });
+            trigger.triggers.Add(pointerDown);
+
+            EventTrigger.Entry pointerUp = new EventTrigger.Entry();
+            pointerUp.eventID = EventTriggerType.PointerUp;
+            pointerUp.callback.AddListener((data) => { if (playerController != null) playerController.Blocking(0); });
+            trigger.triggers.Add(pointerUp);
         }
     }
 
