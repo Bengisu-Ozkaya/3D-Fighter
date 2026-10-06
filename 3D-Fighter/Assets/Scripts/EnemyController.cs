@@ -518,10 +518,10 @@ public class EnemyController : MonoBehaviour
             {
                 Debug.Log($"<color=yellow>[DÜŞMAN BLOKLADI!]</color> {gameObject.name} gelen normal yumruğu gardıyla savuşturdu! (Hasar Alınmadı)");
 
-                // Gardın arkasına hafif sarsıntı tepkisi (boksör darbeyi emer)
-                transform.position += (-transform.forward) * (knockbackDistance * 0.4f);
-                Vector3 blockPos = RingBoundary.ClampToArena(transform.position, bodyRadius);
-                transform.position = blockPos;
+                // Gardın arkasına hafif sarsıntı tepkisi (boksör darbeyi emer) kullanıcı isteğiyle iptal edildi
+                // transform.position += (-transform.forward) * (knockbackDistance * 0.4f);
+                // Vector3 blockPos = RingBoundary.ClampToArena(transform.position, bodyRadius);
+                // transform.position = blockPos;
                 return;
             }
         }
@@ -540,16 +540,16 @@ public class EnemyController : MonoBehaviour
         health -= damageAmount;
         Debug.Log($"<color=orange>[DÜŞMAN DARBE ALDI]</color> {gameObject.name} -{damageAmount} can kaybetti! Kalan Can: {health} (Aparkat: {isUppercut}, Ulti: {fromUlti}, Darbe Sayacı: {consecutiveHitsTaken}/{hitsToTriggerBlock})");
 
-        // Darbe alınca hafif geriye çekilme (Knockback)
-        SetPosition();
+        // Darbe alınca hafif geriye çekilme (Knockback) kullanıcı isteğiyle kaldırıldı
+        // SetPosition();
 
-        // Aparkat veya Ulti darbelerinde ekstra sarsıntı tepkisi ver
+        // Aparkat veya Ulti darbelerinde ekstra sarsıntı tepkisi (Kullanıcı isteğiyle kaldırıldı)
         if (isUppercut || isUlti || damageAmount >= 20f)
         {
-            transform.position += (-transform.forward) * (knockbackDistance * 1.5f);
-            Vector3 pushPos = transform.position + (-transform.forward) * (knockbackDistance * 1.5f);
-            pushPos = RingBoundary.ClampToArena(pushPos, bodyRadius);
-            transform.position = pushPos;
+            // transform.position += (-transform.forward) * (knockbackDistance * 1.5f);
+            // Vector3 pushPos = transform.position + (-transform.forward) * (knockbackDistance * 1.5f);
+            // pushPos = RingBoundary.ClampToArena(pushPos, bodyRadius);
+            // transform.position = pushPos;
         }
 
         // ÖLÜM KONTROLÜ
@@ -638,15 +638,30 @@ public class EnemyController : MonoBehaviour
             playerController = FindObjectOfType<PlayerController>();
         }
 
-        // Oyuncunun Ulti animasyonu tamamlanana kadar bekle
+        // Oyuncunun Ulti animasyonu tamamlanana kadar bekle ve bu sırada sürekli darbe (Right Hit / Head Hit) animasyonu oynat
         float timeout = 4.0f; // Güvenlik zaman aşımı
+        float hitAnimTimer = 0f;
+
         while (playerController != null && playerController.IsCastingUlti && timeout > 0f)
         {
+            if (hitAnimTimer <= 0f)
+            {
+                if (enemyAnimator != null)
+                {
+                    enemyAnimator.ResetTrigger("GetHeadHit");
+                    enemyAnimator.SetTrigger("GetHit");
+                    // Titreme hissiyatı için Hit animasyonunu baştan oynat
+                    enemyAnimator.CrossFadeInFixedTime("Hit", 0.05f);
+                }
+                hitAnimTimer = 0.35f; // Her 0.35 saniyede bir darbe almış gibi tepki versin
+            }
+
+            hitAnimTimer -= Time.deltaTime;
             timeout -= Time.deltaTime;
             yield return null;
         }
 
-        // Oyuncu gardına dönerken minik ve estetik bir gecikmeyle (~0.1 sn) yere yığılma başlasın
+        // Oyuncu ultiyi bitirip gardına dönerken yere yığılma başlasın
         yield return new WaitForSeconds(0.1f);
 
         isPendingUltiDeath = false;
@@ -741,21 +756,21 @@ public class EnemyController : MonoBehaviour
     // Geriye kaçış / Darbe tepkisi (Knockback)
     public void SetPosition()
     {
-        StartCoroutine(KnockBack());
+        // StartCoroutine(KnockBack());
     }
 
     IEnumerator KnockBack()
     {
         yield return new WaitForSeconds(0.6f);
 
-        // Karakterin geri yönüne (veya Z ekseninde geriye) hafifçe iter
-        transform.position += new Vector3(0, 0, knockbackDistance);
-        Vector3 kbPos = transform.position + new Vector3(0, 0, knockbackDistance);
-        kbPos = RingBoundary.ClampToArena(kbPos, bodyRadius);
-        transform.position = kbPos;
+        // Karakterin geri yönüne (veya Z ekseninde geriye) hafifçe iter (Kullanıcı isteğiyle iptal edildi)
+        // transform.position += new Vector3(0, 0, knockbackDistance);
+        // Vector3 kbPos = transform.position + new Vector3(0, 0, knockbackDistance);
+        // kbPos = RingBoundary.ClampToArena(kbPos, bodyRadius);
+        // transform.position = kbPos;
     }
 
-    void Die()
+    void Die(bool isUppercut = false)
     {
         if (isDead) return;
         isDead = true;
@@ -776,7 +791,7 @@ public class EnemyController : MonoBehaviour
             enemyAnimator.SetBool("leftMove", false);
         }
 
-        Debug.Log($"<color=red>[DÜŞMAN YENİLDİ]</color> {gameObject.name} nakavt oldu!");
+        Debug.Log($"<color=red>[DÜŞMAN YENİLDİ]</color> {gameObject.name} nakavt oldu (Aparkat: {isUppercut})!");
 
         // Sadece sahnedeki TÜM düşmanlar öldüyse oyuncu Show Pose'a girsin
         if (playerController == null)
@@ -805,9 +820,11 @@ public class EnemyController : MonoBehaviour
         if (enemyAnimator != null)
         {
             enemyAnimator.SetBool("isDead", true);
+            enemyAnimator.SetBool("isUppercutDead", isUppercut);
             enemyAnimator.ResetTrigger("GetHit");
             enemyAnimator.ResetTrigger("GetHeadHit");
-            enemyAnimator.CrossFadeInFixedTime("Knockout", 0.08f);
+            string deadAnim = isUppercut ? "Uppercut Nakavt" : "Knockout";
+            enemyAnimator.CrossFadeInFixedTime(deadAnim, 0.08f);
             StartCoroutine(WaitPos());
         }
 

@@ -432,6 +432,14 @@ public class PlayerController : MonoBehaviour
             pos = ResolveCollisionWithEnemies(pos);
             pos = RingBoundary.ClampToArena(pos, playerBodyRadius);
         }
+        else
+        {
+            // Kullanıcı isteği: Nakavt olunca ve yerde yatarken Y rotasyonu 0'da kalsın. 
+            // Ancak ayağa kalkarken (Kip Up / Stand Up) düşmana dönük kalkması için 180 yap.
+            Vector3 currentEuler = transform.eulerAngles;
+            currentEuler.y = isStandingUp ? 180f : 0f;
+            transform.eulerAngles = currentEuler;
+        }
 
         transform.position = pos;
     }
@@ -840,11 +848,8 @@ public class PlayerController : MonoBehaviour
         ultiHandsCoroutine = StartCoroutine(SpawnUltiHandsRoutine());
 
 
-        // 2. Vuruşun temas anına kadar bekleme süresi (~0.7 saniye)
-        yield return new WaitForSeconds(0.7f);
-
-        // 3. Vuruş anı penceresi (~1.0 saniye boyunca temas ara)
-        float hitWindow = 1.0f;
+        // Ulti başlar başlamaz temas aramaya başla ki yumruklar spawnlanırken düşmanlar hasar animasyonuna girsin
+        float hitWindow = 2.0f; 
         float hitTimer = 0f;
         bool hasDealtUltiDamage = false;
 
@@ -858,8 +863,8 @@ public class PlayerController : MonoBehaviour
             yield return null;
         }
 
-        // 4. Kalan animasyon süresini bekle (~1.2 saniye)
-        yield return new WaitForSeconds(1.2f);
+        // 4. Kalan animasyon süresini bekle (~0.9 saniye)
+        yield return new WaitForSeconds(0.9f);
 
         if (playerAnim != null && !isDead && !isGameCompleted)
         {
@@ -1458,6 +1463,7 @@ public class PlayerController : MonoBehaviour
         {
             currentMoveAnim = MoveAnim.None;
             playerAnim.SetBool("isDead", false);
+            playerAnim.SetBool("isUppercutDead", false);
             playerAnim.SetBool("isDeadEnemy", false);
             playerAnim.SetBool("leftMove", false);
             playerAnim.SetBool("rightMove", false);
@@ -1648,7 +1654,7 @@ public class PlayerController : MonoBehaviour
 
         if (playerHealth <= 0)
         {
-            Die();
+            Die(isUppercut);
         }
         else
         {
@@ -1732,7 +1738,7 @@ public class PlayerController : MonoBehaviour
         hitStunRoutine = null;
     }
 
-    void Die()
+    void Die(bool isUppercut = false)
     {
         if (isDead) return;
         isDead = true;
@@ -1762,12 +1768,19 @@ public class PlayerController : MonoBehaviour
         }
         StopUltiLightShow();
 
-        Debug.Log("<color=red>[OYUNCU NAKAVT OLDU!]</color>");
+        // Kullanıcı isteği: Nakavt anında Y rotasyonunu 0'da sabitle
+        Vector3 deadRot = transform.eulerAngles;
+        deadRot.y = 0f;
+        transform.eulerAngles = deadRot;
+
+        string deathAnim = isUppercut ? "Uppercut Nakavt" : "Nakavt";
+        Debug.Log($"<color=red>[OYUNCU NAKAVT OLDU!]</color> Animasyon: {deathAnim} (Y Rotasyonu: 0)");
 
         if (playerAnim != null)
         {
             currentMoveAnim = MoveAnim.None;
             playerAnim.SetBool("isDead", true);
+            playerAnim.SetBool("isUppercutDead", isUppercut);
             playerAnim.SetBool("leftMove", false);
             playerAnim.SetBool("rightMove", false);
             playerAnim.SetBool("isDeadEnemy", false);
@@ -1775,8 +1788,7 @@ public class PlayerController : MonoBehaviour
             playerAnim.ResetTrigger("GetHeadHit");
             playerAnim.ResetTrigger("PunchLeft");
             playerAnim.ResetTrigger("PunchRight");
-            // Aparkat nakavt animasyonu (Uppercut Nakavt) oynatılır
-            playerAnim.CrossFadeInFixedTime("Uppercut Nakavt", 0.08f);
+            playerAnim.CrossFadeInFixedTime(deathAnim, 0.08f);
         }
 
         // Tüm düşmanlara oyuncunun öldüğünü bildir (Düşmanlar Show Pose'a geçsin)
@@ -1798,25 +1810,31 @@ public class PlayerController : MonoBehaviour
             col.enabled = false;
         }
 
-        StartCoroutine(DeathRoutine());
+        StartCoroutine(DeathRoutine(deathAnim));
     }
 
-    IEnumerator DeathRoutine()
+    IEnumerator DeathRoutine(string deathAnim = "Uppercut Nakavt")
     {
         isStandingUp = false;
 
         // 1. Knockout (yere düşme) animasyonunun başlaması için kısa bir süre tanı
         yield return new WaitForSeconds(0.2f);
 
-        // 2. Knockout animasyonu tamamlanana ve oyuncu yere düşene kadar bekle (~2.5 saniye)
+        // 2. Knockout animasyonu tamamlanana ve oyuncu yere düşene kadar bekle (~2.5-3.0 saniye)
         float fallTimer = 0f;
         while (fallTimer < 3.0f)
         {
             fallTimer += Time.deltaTime;
+
+            // Düşme animasyonu oynarken Y rotasyonunu kesin olarak 0'da kilitle
+            Vector3 lockRot = transform.eulerAngles;
+            lockRot.y = 0f;
+            transform.eulerAngles = lockRot;
+
             if (playerAnim != null)
             {
                 AnimatorStateInfo stateInfo = playerAnim.GetCurrentAnimatorStateInfo(0);
-                if ((stateInfo.IsName("Uppercut Nakavt") || stateInfo.IsName("Defeat")) && stateInfo.normalizedTime >= 0.95f)
+                if ((stateInfo.IsName(deathAnim) || stateInfo.IsName("Nakavt") || stateInfo.IsName("Uppercut Nakavt") || stateInfo.IsName("Defeat")) && stateInfo.normalizedTime >= 0.95f)
                 {
                     break;
                 }
@@ -1824,10 +1842,14 @@ public class PlayerController : MonoBehaviour
             yield return null;
         }
 
-        // Yerde nakavt pozisyonunu sabitle (yerde yatar)
+        // Yerde nakavt pozisyonunu sabitle (yerde yatar, Y rotasyonu 0)
         Vector3 fallPos = transform.position;
         fallPos.y = fallenYPosition;
         transform.position = fallPos;
+
+        Vector3 finalRot = transform.eulerAngles;
+        finalRot.y = 0f;
+        transform.eulerAngles = finalRot;
 
         // Yerde nakavt halinde kısa ve doğal bir bekleme süresi (0.5 saniye)
         yield return new WaitForSeconds(0.5f);
@@ -1933,6 +1955,8 @@ public class PlayerController : MonoBehaviour
         if (playerAnim != null)
         {
             playerAnim.SetBool("isDead", false);
+            playerAnim.SetBool("isUppercutDead", false);
+            playerAnim.SetTrigger("KipUp");
             playerAnim.CrossFadeInFixedTime(getUpAnim, 0.15f);
         }
 
@@ -2054,6 +2078,9 @@ public class PlayerController : MonoBehaviour
     {
         yield return new WaitForSeconds(1.2f);
         transform.position = new Vector3(transform.position.x, fallenYPosition, transform.position.z);
+        Vector3 r = transform.eulerAngles;
+        r.y = 0f;
+        transform.eulerAngles = r;
     }
 
     public void PunchButton()
