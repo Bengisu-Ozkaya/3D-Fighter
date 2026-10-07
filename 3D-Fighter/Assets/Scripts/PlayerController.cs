@@ -506,10 +506,11 @@ public class PlayerController : MonoBehaviour
         float h = 0f;
         float v = 0f;
 
-        if (Input.GetKey(KeyCode.W)) v -= 1f;
-        if (Input.GetKey(KeyCode.S)) v += 1f;
-        if (Input.GetKey(KeyCode.A)) h += 1f;
-        if (Input.GetKey(KeyCode.D)) h -= 1f;
+        // Standart yönlendirmeler (W: İleri, S: Geri, A: Sol, D: Sağ)
+        if (Input.GetKey(KeyCode.W)) v += 1f;
+        if (Input.GetKey(KeyCode.S)) v -= 1f;
+        if (Input.GetKey(KeyCode.A)) h -= 1f;
+        if (Input.GetKey(KeyCode.D)) h += 1f;
 
         // Mobil Joystick Girişi
         if (joystick == null)
@@ -522,20 +523,26 @@ public class PlayerController : MonoBehaviour
             Vector2 joy = joystick.InputDirection;
             if (joy.sqrMagnitude > 0.001f)
             {
-                // joy.x: Sağa (+1) çekildiğinde D tuşu gibi h azalır (-=)
-                // joy.x: Sola (-1) çekildiğinde A tuşu gibi h artar (+=)
-                h -= joy.x;
-                // joy.y: Yukarı (+1) çekildiğinde W tuşu gibi v azalır (-=)
-                // joy.y: Aşağı (-1) çekildiğinde S tuşu gibi v artar (+=)
-                v -= joy.y;
+                h += joy.x;
+                v += joy.y;
             }
         }
 
         Vector3 rawMove = new Vector3(h, 0f, v);
-        Vector3 moveDir = rawMove.sqrMagnitude > 1f ? rawMove.normalized : rawMove;
+        if (rawMove.sqrMagnitude > 1f) rawMove.Normalize();
 
-        if (moveDir.sqrMagnitude > 0.001f)
+        Vector3 moveDir = Vector3.zero;
+
+        if (rawMove.sqrMagnitude > 0.001f)
         {
+            // Kamera bazlı hareket (GTA Tarzı)
+            Vector3 camFwd = GetCameraForward();
+            Vector3 camRight = Camera.main != null ? Camera.main.transform.right : transform.right;
+            camRight.y = 0f;
+            camRight.Normalize();
+
+            moveDir = camFwd * rawMove.z + camRight * rawMove.x;
+
             // 1. Pozisyonu hareket yönünde ilerlet (Dünya koordinatlarında)
             Vector3 targetPos = transform.position + moveDir * speed * Time.deltaTime;
             targetPos.y = standingYPosition;
