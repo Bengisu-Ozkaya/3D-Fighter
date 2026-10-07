@@ -270,17 +270,17 @@ public class UIManager : MonoBehaviour
         Canvas canvas = FindObjectOfType<Canvas>();
         if (canvas != null)
         {
-            Button[] allButtons = canvas.GetComponentsInChildren<Button>(true);
-            foreach (var btn in allButtons)
+            Transform[] allTransforms = canvas.GetComponentsInChildren<Transform>(true);
+            foreach (var t in allTransforms)
             {
-                if (btn.name.Equals("Punch Button", System.StringComparison.OrdinalIgnoreCase) ||
-                    btn.name.Equals("PunchButton", System.StringComparison.OrdinalIgnoreCase) ||
-                    btn.name.Equals("Vurus Butonu", System.StringComparison.OrdinalIgnoreCase) ||
-                    btn.name.Equals("hitButton", System.StringComparison.OrdinalIgnoreCase) ||
-                    btn.name.Contains("Punch") ||
-                    btn.name.Contains("Hit"))
+                if (t.name.Equals("Punch Button", System.StringComparison.OrdinalIgnoreCase) ||
+                    t.name.Equals("PunchButton", System.StringComparison.OrdinalIgnoreCase) ||
+                    t.name.Equals("Vurus Butonu", System.StringComparison.OrdinalIgnoreCase) ||
+                    t.name.Equals("hitButton", System.StringComparison.OrdinalIgnoreCase) ||
+                    (t.name.Contains("Punch") && (t.GetComponent<Button>() != null || t.GetComponent<EventTrigger>() != null || t.GetComponent<Image>() != null)) ||
+                    (t.name.Contains("Hit") && (t.GetComponent<Button>() != null || t.GetComponent<EventTrigger>() != null || t.GetComponent<Image>() != null)))
                 {
-                    punchButton = btn.gameObject;
+                    punchButton = t.gameObject;
                     break;
                 }
             }
@@ -292,15 +292,15 @@ public class UIManager : MonoBehaviour
         Canvas canvas = FindObjectOfType<Canvas>();
         if (canvas != null)
         {
-            Button[] allButtons = canvas.GetComponentsInChildren<Button>(true);
-            foreach (var btn in allButtons)
+            Transform[] allTransforms = canvas.GetComponentsInChildren<Transform>(true);
+            foreach (var t in allTransforms)
             {
-                if (btn.name.Equals("Uppercut Button", System.StringComparison.OrdinalIgnoreCase) ||
-                    btn.name.Equals("UppercutButton", System.StringComparison.OrdinalIgnoreCase) ||
-                    btn.name.Equals("Aparkat Butonu", System.StringComparison.OrdinalIgnoreCase) ||
-                    btn.name.Contains("Uppercut"))
+                if (t.name.Equals("Uppercut Button", System.StringComparison.OrdinalIgnoreCase) ||
+                    t.name.Equals("UppercutButton", System.StringComparison.OrdinalIgnoreCase) ||
+                    t.name.Equals("Aparkat Butonu", System.StringComparison.OrdinalIgnoreCase) ||
+                    (t.name.Contains("Uppercut") && (t.GetComponent<Button>() != null || t.GetComponent<EventTrigger>() != null || t.GetComponent<Image>() != null)))
                 {
-                    uppercutButton = btn.gameObject;
+                    uppercutButton = t.gameObject;
                     break;
                 }
             }
@@ -333,10 +333,24 @@ public class UIManager : MonoBehaviour
         if (playerController == null) playerController = FindObjectOfType<PlayerController>();
         if (punchButton != null && playerController != null)
         {
+            EventTrigger trigger = punchButton.GetComponent<EventTrigger>();
+            if (trigger == null)
+            {
+                trigger = punchButton.AddComponent<EventTrigger>();
+            }
+
+            trigger.triggers.RemoveAll(entry => entry.eventID == EventTriggerType.PointerDown);
+
+            EventTrigger.Entry pointerDown = new EventTrigger.Entry();
+            pointerDown.eventID = EventTriggerType.PointerDown;
+            pointerDown.callback.AddListener((data) => { if (playerController != null) playerController.PunchButton(); });
+            trigger.triggers.Add(pointerDown);
+
             Button btn = punchButton.GetComponent<Button>();
             if (btn != null)
             {
                 btn.onClick.RemoveListener(playerController.PunchButton);
+                // We rely on PointerDown for faster response, but adding onClick as fallback
                 btn.onClick.AddListener(playerController.PunchButton);
             }
         }
@@ -347,6 +361,19 @@ public class UIManager : MonoBehaviour
         if (playerController == null) playerController = FindObjectOfType<PlayerController>();
         if (uppercutButton != null && playerController != null)
         {
+            EventTrigger trigger = uppercutButton.GetComponent<EventTrigger>();
+            if (trigger == null)
+            {
+                trigger = uppercutButton.AddComponent<EventTrigger>();
+            }
+
+            trigger.triggers.RemoveAll(entry => entry.eventID == EventTriggerType.PointerDown);
+
+            EventTrigger.Entry pointerDown = new EventTrigger.Entry();
+            pointerDown.eventID = EventTriggerType.PointerDown;
+            pointerDown.callback.AddListener((data) => { if (playerController != null) playerController.UppercutButton(); });
+            trigger.triggers.Add(pointerDown);
+
             Button btn = uppercutButton.GetComponent<Button>();
             if (btn != null)
             {

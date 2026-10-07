@@ -179,7 +179,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   health: 30
   maxHealth: 30
-  knockbackDistance: 0.2
+  knockbackDistance: 0
   enemyAnimator: {fileID: 6884461742084159459}
   attackRange: 1.1
   maxHitDistance: 1.25
@@ -187,7 +187,7 @@ MonoBehaviour:
   moveSpeed: 1.2
   attackDamage: 10
   uppercutDamage: 10
-  hitsToTriggerBlock: 2
+  hitsToTriggerBlock: 1
   blockChance: 1
   blockDuration: 1.5
   blockCooldown: 0.5

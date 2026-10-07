@@ -1303,14 +1303,9 @@ public class PlayerController : MonoBehaviour
             // Normal dalgalar arasında Show Pose'a geçmiyoruz, oyuncu Idle'da kalır ve serbestçe hareket edebilir
             playerAnim.SetBool("isDeadEnemy", false);
 
-            if (dead && !isCastingUlti)
-            {
-                isPunching = false;
-                isPunchActive = false;
-                currentMoveAnim = MoveAnim.None;
-                playerAnim.CrossFadeInFixedTime("Idle", 0.15f);
-                currentMoveAnim = MoveAnim.Idle;
-            }
+            // Düşman öldüğünde oyuncunun mevcut vuruş animasyonunu (yumruk/aparkat)
+            // yarıda kesmemesi için zorunlu Idle geçişini kaldırdık.
+            // Vuruş bittikten sonra zaten doğal olarak Idle pozuna dönecektir.
         }
     }
 
@@ -1360,9 +1355,12 @@ public class PlayerController : MonoBehaviour
     {
         isGameCompleted = true;
         isEnemyDead = true;
-        isPunching = false;
-        isPunchActive = false;
-        StopCoroutine(nameof(PunchRoutine));
+
+        // Vuruşun tamamlanmasını bekle ki son düşmanı öldüren yumruk yarım kalmasın
+        while (isPunching || isCastingUlti)
+        {
+            yield return null;
+        }
 
         if (playerAnim != null)
         {
