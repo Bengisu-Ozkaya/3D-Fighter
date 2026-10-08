@@ -763,6 +763,20 @@ public class UIManager : MonoBehaviour
             GameObject newPlayer = Instantiate(selectedPrefab, spawnPos, spawnRot);
             newPlayer.SetActive(true); // <--- Prefab eger kapali kaydedilmisse, sahnede aktif olsun
             playerController = newPlayer.GetComponent<PlayerController>();
+
+            // Sağlık barını yeni karaktere bağla
+            if (playerController != null && healtBarPanel != null)
+            {
+                Image[] images = healtBarPanel.GetComponentsInChildren<Image>(true);
+                foreach (var img in images)
+                {
+                    if (img.gameObject.name.Contains("Health Bar Green") || img.gameObject.name.Contains("Green"))
+                    {
+                        playerController.SetHealthBar(img);
+                        break;
+                    }
+                }
+            }
         }
         else
         {

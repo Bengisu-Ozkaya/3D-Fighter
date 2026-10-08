@@ -197,6 +197,15 @@ public class PlayerController : MonoBehaviour
 
     [SerializeField] Image playerHealthBar;
 
+    public void SetHealthBar(Image healthBar)
+    {
+        playerHealthBar = healthBar;
+        if (playerHealthBar != null && maxPlayerHealth > 0)
+        {
+            playerHealthBar.fillAmount = playerHealth / maxPlayerHealth;
+        }
+    }
+
     void Awake()
     {
         usingUlti = true; // Ulti oyun başında hazır değildir; oyun modu seçildikten sonra yüklenmeye başlar
