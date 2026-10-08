@@ -194,6 +194,7 @@ public class FollowPlayer : MonoBehaviour
         return focusPoint + rotation * offsetPos;
     }
 
+
     private void FindTargetIfNeeded()
     {
         if (target != null)

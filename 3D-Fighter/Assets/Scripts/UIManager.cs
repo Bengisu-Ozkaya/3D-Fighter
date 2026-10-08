@@ -20,7 +20,11 @@ public class UIManager : MonoBehaviour
     [SerializeField] private GameObject uppercutButton;
     [SerializeField] private GameObject blockButton;
     [SerializeField] private TMP_Text playerHealthText;
-
+    [SerializeField] private GameObject characterPanel;
+    [Header("Karakter Seçimi")]
+    [SerializeField] private GameObject[] characterPrefabs;
+    [SerializeField] private Transform playerSpawnPoint;
+    private Difficulty selectedDifficulty;
     [Header("Referanslar")]
     [SerializeField] EnemySpawner enemySpawner;
     [SerializeField] PlayerController playerController;
@@ -506,68 +510,27 @@ public class UIManager : MonoBehaviour
 
     public void EasyMode()
     {
-        Time.timeScale = 1f;
-        if (startPanel != null) startPanel.SetActive(false);
-        if (victoryPanel != null) victoryPanel.SetActive(false);
-        if (gameOverPanel != null) gameOverPanel.SetActive(false);
-        if (pausePanel != null) pausePanel.SetActive(false);
-        if (healtBarPanel != null) healtBarPanel.SetActive(true);
-        if (mobileControlPanel != null) mobileControlPanel.SetActive(true);
-        ShowPauseButton(); // Pause butonu her zaman en öne getirilir
-
-        if (enemySpawner != null)
-        {
-            enemySpawner.StartEasyMode();
-        }
-        if (playerController == null) playerController = FindObjectOfType<PlayerController>();
-        if (playerController != null)
-        {
-            playerController.StartUltiCooldown();
-        }
+        selectedDifficulty = Difficulty.Easy;
+        OpenCharacterSelectPanel();
     }
 
     public void MidMode()
     {
-        Time.timeScale = 1f;
-        if (startPanel != null) startPanel.SetActive(false);
-        if (victoryPanel != null) victoryPanel.SetActive(false);
-        if (gameOverPanel != null) gameOverPanel.SetActive(false);
-        if (pausePanel != null) pausePanel.SetActive(false);
-        if (healtBarPanel != null) healtBarPanel.SetActive(true);
-        if (mobileControlPanel != null) mobileControlPanel.SetActive(true);
-        ShowPauseButton();
-
-        if (enemySpawner != null)
-        {
-            enemySpawner.StartMidMode();
-        }
-        if (playerController == null) playerController = FindObjectOfType<PlayerController>();
-        if (playerController != null)
-        {
-            playerController.StartUltiCooldown();
-        }
+        selectedDifficulty = Difficulty.Medium;
+        OpenCharacterSelectPanel();
     }
 
     public void HardMode()
     {
+        selectedDifficulty = Difficulty.Hard;
+        OpenCharacterSelectPanel();
+    }
+
+    private void OpenCharacterSelectPanel()
+    {
         Time.timeScale = 1f;
         if (startPanel != null) startPanel.SetActive(false);
-        if (victoryPanel != null) victoryPanel.SetActive(false);
-        if (gameOverPanel != null) gameOverPanel.SetActive(false);
-        if (pausePanel != null) pausePanel.SetActive(false);
-        if (healtBarPanel != null) healtBarPanel.SetActive(true);
-        if (mobileControlPanel != null) mobileControlPanel.SetActive(true);
-        ShowPauseButton();
-
-        if (enemySpawner != null)
-        {
-            enemySpawner.StartHardMode();
-        }
-        if (playerController == null) playerController = FindObjectOfType<PlayerController>();
-        if (playerController != null)
-        {
-            playerController.StartUltiCooldown();
-        }
+        if (characterPanel != null) characterPanel.SetActive(true);
     }
 
     /// <summary>
@@ -756,5 +719,90 @@ public class UIManager : MonoBehaviour
         if (mobileControlPanel != null) mobileControlPanel.SetActive(true);
         ShowPauseButton();
         Debug.Log("<color=green>[OYUN DEVAM EDİYOR]</color> Pause Panel kapatıldı, oyun devam ediyor.");
+    }
+
+    public void ChooseCharacter(string Character)
+    {
+        if (characterPanel != null) characterPanel.SetActive(false);
+        
+        if (playerController == null) playerController = FindObjectOfType<PlayerController>();
+        Vector3 spawnPos = Vector3.zero;
+        Quaternion spawnRot = Quaternion.identity;
+
+        if (playerSpawnPoint != null)
+        {
+            spawnPos = playerSpawnPoint.position;
+            spawnRot = playerSpawnPoint.rotation;
+        }
+        else if (playerController != null)
+        {
+            spawnPos = playerController.transform.position;
+            spawnRot = playerController.transform.rotation;
+        }
+
+        if (playerController != null && playerController.gameObject != null)
+        {
+            Destroy(playerController.gameObject);
+        }
+
+        GameObject selectedPrefab = null;
+        if (characterPrefabs != null)
+        {
+            foreach (var prefab in characterPrefabs)
+            {
+                if (prefab != null && prefab.name.ToLower().Contains(Character.ToLower()))
+                {
+                    selectedPrefab = prefab;
+                    break;
+                }
+            }
+        }
+
+        if (selectedPrefab != null)
+        {
+            GameObject newPlayer = Instantiate(selectedPrefab, spawnPos, spawnRot);
+            newPlayer.SetActive(true); // <--- Prefab eger kapali kaydedilmisse, sahnede aktif olsun
+            playerController = newPlayer.GetComponent<PlayerController>();
+        }
+        else
+        {
+            Debug.LogWarning("Karakter prefab'i bulunamadi veya atanmadi: " + Character);
+        }
+
+        BindUltiButton();
+        BindPunchButton();
+        BindUppercutButton();
+        BindBlockButton();
+
+        Time.timeScale = 1f;
+        if (victoryPanel != null) victoryPanel.SetActive(false);
+        if (gameOverPanel != null) gameOverPanel.SetActive(false);
+        if (pausePanel != null) pausePanel.SetActive(false);
+        if (healtBarPanel != null) healtBarPanel.SetActive(true);
+        if (mobileControlPanel != null) mobileControlPanel.SetActive(true);
+        ShowPauseButton(); 
+
+        if (enemySpawner != null)
+        {
+            switch (selectedDifficulty)
+            {
+                case Difficulty.Easy: enemySpawner.StartEasyMode(); break;
+                case Difficulty.Medium: enemySpawner.StartMidMode(); break;
+                case Difficulty.Hard: enemySpawner.StartHardMode(); break;
+            }
+        }
+        
+        if (playerController != null)
+        {
+            playerController.StartUltiCooldown();
+        }
+        
+        FollowPlayer camFollow = FindObjectOfType<FollowPlayer>();
+        if (camFollow != null && playerController != null)
+        {
+            camFollow.SetTarget(playerController.transform);
+        }
+        
+        Debug.Log("Oyuna baslandi! Secilen karakter: " + Character + ", Zorluk: " + selectedDifficulty);
     }
 }
