@@ -57,7 +57,7 @@ public class WaveStats
 public class EnemySpawner : MonoBehaviour
 {
     [Header("Dalga ve Düşman Ayarları")]
-    [SerializeField] GameObject enemyPrefab;
+    [SerializeField] private List<GameObject> enemyPrefab = new List<GameObject>();
     [Tooltip("Önceki dalgadaki tüm düşmanlar yok olduktan (Destroy edildikten) sonra yeni dalganın başlama gecikmesi (saniye)")]
     [SerializeField] float respawnDelay = 1.0f;
     [Tooltip("Birden fazla düşman doğduğunda aralarındaki yatay mesafe")]
@@ -885,9 +885,10 @@ public class EnemySpawner : MonoBehaviour
                 float xOffset = (count > 1) ? (i - (count - 1) * 0.5f) * spawnSpacing : 0f;
                 Vector3 spawnPos = transform.position + new Vector3(xOffset, 0f, 0f);
                 spawnPos = RingBoundary.ClampToArena(spawnPos, 0.45f);
+                int randomIndex = Random.Range(0,enemyPrefab.Count);
 
                 Quaternion spawnRot = Quaternion.Euler(0f, spawnRotationY, 0f);
-                GameObject newEnemy = Instantiate(enemyPrefab, spawnPos, spawnRot);
+                GameObject newEnemy = Instantiate(enemyPrefab[randomIndex], spawnPos, spawnRot);
                 EnemyController ec = newEnemy.GetComponent<EnemyController>();
                 if (ec != null)
                 {
