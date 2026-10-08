@@ -11354,12 +11354,12 @@ MonoBehaviour:
   playerHealthText: {fileID: 457845037}
   characterPanel: {fileID: 1193513315}
   characterPrefabs:
-  - {fileID: 3645599480351997236, guid: 5e2e315ae481ca34a96f39a424f5fc5e, type: 3}
+  - {fileID: 3645599480351997236, guid: f7721e1830592b648b9f9ceb6633a24b, type: 3}
   - {fileID: 5648850232931515238, guid: 1c441596f2efced45b3125a22fe9d6a7, type: 3}
   - {fileID: 5610208854758869965, guid: 4f9b8473f273df44e8f3bc6afd9dbaa2, type: 3}
   playerSpawnPoint: {fileID: 1686026842}
   enemySpawner: {fileID: 372237216}
-  playerController: {fileID: 1686026838}
+  playerController: {fileID: 0}
 --- !u!114 &1328626421
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -14478,17 +14478,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1685157174}
   m_CullTransparentMesh: 1
---- !u!114 &1686026838 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 2279752524648767131, guid: 5e2e315ae481ca34a96f39a424f5fc5e, type: 3}
-  m_PrefabInstance: {fileID: 7657527296671363811}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: aee9195f5a4fbac4a8957d9b8831d7e1, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
 --- !u!4 &1686026842 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 4169231291311122318, guid: 5e2e315ae481ca34a96f39a424f5fc5e, type: 3}
@@ -17095,7 +17084,7 @@ MonoBehaviour:
           m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
           m_IntArgument: 0
           m_FloatArgument: 0
-          m_StringArgument: Ortiz
+          m_StringArgument: Ortiz-Player
           m_BoolArgument: 0
         m_CallState: 2
 --- !u!114 &2012901333
@@ -18430,33 +18419,13 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
-    - target: {fileID: 2279752524648767131, guid: 5e2e315ae481ca34a96f39a424f5fc5e, type: 3}
-      propertyPath: joystick
-      value: 
-      objectReference: {fileID: 807473029}
-    - target: {fileID: 2279752524648767131, guid: 5e2e315ae481ca34a96f39a424f5fc5e, type: 3}
-      propertyPath: uiManager
-      value: 
-      objectReference: {fileID: 1328626420}
-    - target: {fileID: 2279752524648767131, guid: 5e2e315ae481ca34a96f39a424f5fc5e, type: 3}
-      propertyPath: startPanel
-      value: 
-      objectReference: {fileID: 2063015549}
-    - target: {fileID: 2279752524648767131, guid: 5e2e315ae481ca34a96f39a424f5fc5e, type: 3}
-      propertyPath: enemySpawner
-      value: 
-      objectReference: {fileID: 372237216}
-    - target: {fileID: 2279752524648767131, guid: 5e2e315ae481ca34a96f39a424f5fc5e, type: 3}
-      propertyPath: playerHealthBar
-      value: 
-      objectReference: {fileID: 1803241761}
     - target: {fileID: 3645599480351997236, guid: 5e2e315ae481ca34a96f39a424f5fc5e, type: 3}
       propertyPath: m_Name
       value: Player
       objectReference: {fileID: 0}
     - target: {fileID: 3645599480351997236, guid: 5e2e315ae481ca34a96f39a424f5fc5e, type: 3}
       propertyPath: m_IsActive
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 4169231291311122318, guid: 5e2e315ae481ca34a96f39a424f5fc5e, type: 3}
       propertyPath: m_LocalPosition.x

@@ -740,6 +740,10 @@ public class UIManager : MonoBehaviour
             spawnRot = playerController.transform.rotation;
         }
 
+        // Kullanıcının isteği üzerine Y rotasyonunu her zaman 180 dereceye (geriye bakacak şekilde) sabitliyoruz
+        Vector3 currentEuler = spawnRot.eulerAngles;
+        spawnRot = Quaternion.Euler(currentEuler.x, 180f, currentEuler.z);
+
         if (playerController != null && playerController.gameObject != null)
         {
             Destroy(playerController.gameObject);
@@ -815,6 +819,7 @@ public class UIManager : MonoBehaviour
         if (camFollow != null && playerController != null)
         {
             camFollow.SetTarget(playerController.transform);
+            camFollow.SnapToTarget(); // Kamerayı anında yeni rotasyona (180 dereceye) hizala
         }
         
         Debug.Log("Oyuna baslandi! Secilen karakter: " + Character + ", Zorluk: " + selectedDifficulty);

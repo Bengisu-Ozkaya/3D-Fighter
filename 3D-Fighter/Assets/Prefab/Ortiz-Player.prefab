@@ -66,7 +66,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: 3c5077f57a8303c4bbc2381c2e7311d1, type: 3}
       propertyPath: m_Name
-      value: Ortiz
+      value: Ortiz-Player
       objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: 3c5077f57a8303c4bbc2381c2e7311d1, type: 3}
       propertyPath: m_IsActive
@@ -75,7 +75,7 @@ PrefabInstance:
     - target: {fileID: 5866666021909216657, guid: 3c5077f57a8303c4bbc2381c2e7311d1, type: 3}
       propertyPath: m_Controller
       value: 
-      objectReference: {fileID: 9100000, guid: 8e5f2910771cb8a4891104e6acba7112, type: 2}
+      objectReference: {fileID: 9100000, guid: 4c9917bf6a534924baff056add33f0b6, type: 2}
     - target: {fileID: 5866666021909216657, guid: 3c5077f57a8303c4bbc2381c2e7311d1, type: 3}
       propertyPath: m_WarningMessage
       value: 
@@ -90,16 +90,183 @@ PrefabInstance:
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3c5077f57a8303c4bbc2381c2e7311d1, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 7550769688587119362}
+      addedObject: {fileID: 2279752524648767131}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3c5077f57a8303c4bbc2381c2e7311d1, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 3294192457763730758}
+      addedObject: {fileID: 8793308238110623620}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3c5077f57a8303c4bbc2381c2e7311d1, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 7550769688587119362}
   m_SourcePrefab: {fileID: 100100000, guid: 3c5077f57a8303c4bbc2381c2e7311d1, type: 3}
 --- !u!1 &3645599480351997236 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 3c5077f57a8303c4bbc2381c2e7311d1, type: 3}
   m_PrefabInstance: {fileID: 4491967586362687589}
   m_PrefabAsset: {fileID: 0}
+--- !u!114 &2279752524648767131
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3645599480351997236}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: aee9195f5a4fbac4a8957d9b8831d7e1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  playerAnim: {fileID: 8015344184614927860}
+  enemyController: {fileID: 0}
+  speed: 1.2
+  rotationSpeed: 14
+  punchRadius: 0.28
+  maxPunchRange: 1.5
+  punchStepDistance: 0.08
+  punchActiveDuration: 0.5
+  punchDuration: 0.55
+  punchDamage: 10
+  uppercutDamage: 20
+  targetLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  rightFist: {fileID: 0}
+  leftFist: {fileID: 0}
+  playerHealth: 100
+  maxPlayerHealth: 100
+  respawnDelay: 5
+  playerBodyRadius: 0.45
+  standingYPosition: 0.1
+  fallenYPosition: 0.1
+  standUpYPosition: 0.1
+  punchWindupTime: 0.14
+  uppercutWindupTime: 0.18
+  punchCooldown: 0.05
+  startPanel: {fileID: 0}
+  uiManager: {fileID: 0}
+  enemySpawner: {fileID: 0}
+  joystick: {fileID: 0}
+  usingUlti: 1
+  ultiDamage: 30
+  ultiCooldown: 3
+  ultiRange: 2
+  handsPrefab: {fileID: 2102365584225921075, guid: c34f3c8695314af4e8c08d4eb4a6f89c, type: 3}
+  ultiHandsCount: 20
+  ultiHandsSpawnInterval: 0.12
+  ultiHandsSpawnY: 3.33
+  ultiHandsTargetY: 0
+  ultiHandsSpeed: 3.5
+  ultiHandsMinX: -2.5
+  ultiHandsMaxX: -0.33
+  ultiHandsMinZ: 1
+  ultiHandsMaxZ: 4
+  ultiHandsRotation: {x: 0, y: 0, z: -90}
+  ultiSoundClip: {fileID: 8300000, guid: a8b517317f8e71548a6160a0a861659d, type: 3}
+  ultiSoundVolume: 1
+  ultiPunchSoundClip: {fileID: 8300000, guid: 57193ba8eb370614eafd3d8ec5422961, type: 3}
+  ultiPunchSoundVolume: 1
+  punchSoundDelay: 0
+  playerAudioSource: {fileID: 0}
+  enableUltiLightShow: 1
+  ultiLightSpeed: 7
+  ultiLightIntensityMultiplier: 2.2
+  spawnUltiHeroLight: 1
+  playerHealthBar: {fileID: 0}
+--- !u!82 &8793308238110623620
+AudioSource:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3645599480351997236}
+  m_Enabled: 1
+  serializedVersion: 4
+  OutputAudioMixerGroup: {fileID: 0}
+  m_audioClip: {fileID: 0}
+  m_PlayOnAwake: 1
+  m_Volume: 1
+  m_Pitch: 1
+  Loop: 0
+  Mute: 0
+  Spatialize: 0
+  SpatializePostEffects: 0
+  Priority: 128
+  DopplerLevel: 1
+  MinDistance: 1
+  MaxDistance: 500
+  Pan2D: 0
+  rolloffMode: 0
+  BypassEffects: 0
+  BypassListenerEffects: 0
+  BypassReverbZones: 0
+  rolloffCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  panLevelCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  spreadCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  reverbZoneMixCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
 --- !u!65 &7550769688587119362
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -121,35 +288,8 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 1, y: 1.7542845, z: 1}
   m_Center: {x: 0, y: 0.8698146, z: 0}
---- !u!114 &3294192457763730758
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
+--- !u!95 &8015344184614927860 stripped
+Animator:
+  m_CorrespondingSourceObject: {fileID: 5866666021909216657, guid: 3c5077f57a8303c4bbc2381c2e7311d1, type: 3}
+  m_PrefabInstance: {fileID: 4491967586362687589}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3645599480351997236}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c619d60d071c09a4a8d508cdff0e7080, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  health: 30
-  maxHealth: 30
-  knockbackDistance: 0
-  enemyAnimator: {fileID: 6884461742084159459, guid: 5a772418047da24ba4762083ab775be9, type: 3}
-  attackRange: 1.1
-  maxHitDistance: 1.25
-  attackCooldown: 1.8
-  moveSpeed: 1.2
-  attackDamage: 10
-  uppercutDamage: 10
-  hitsToTriggerBlock: 1
-  blockChance: 1
-  blockDuration: 1.5
-  blockCooldown: 0.5
-  comboResetThreshold: 1.8
-  standingYPosition: 0.1
-  fallenYPosition: 0.1
-  bodyRadius: 0.45
-  separationRadius: 0.6
-  separationStrength: 0.6
