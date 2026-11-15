@@ -1,0 +1,59 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 86ff85ed614e13a498102884c3a893a0, type: 3}
+  m_Name: FighterCombatConfig
+  m_EditorClassIdentifier: 
+  playerSpeed: 1.2
+  playerRotationSpeed: 14
+  playerBodyRadius: 0.45
+  punchRadius: 0.2
+  maxPunchRange: 25
+  punchStepDistance: 0
+  punchActiveDuration: 0.4
+  punchDuration: 0.55
+  punchWindupTime: 0.14
+  uppercutWindupTime: 0.18
+  punchCooldown: 0.05
+  ultiCooldown: 3
+  ultiRange: 2
+  handsPrefab: {fileID: 2102365584225921075, guid: c34f3c8695314af4e8c08d4eb4a6f89c, type: 3}
+  ultiHandsCount: 20
+  ultiHandsSpawnInterval: 0.12
+  ultiHandsSpawnY: 3.33
+  ultiHandsTargetY: 0
+  ultiHandsSpeed: 3.5
+  ultiHandsMinX: -2.5
+  ultiHandsMaxX: -0.33
+  ultiHandsMinZ: 1
+  ultiHandsMaxZ: 4
+  ultiHandsRotation: {x: 0, y: 0, z: -90}
+  ultiSoundClip: {fileID: 8300000, guid: a8b517317f8e71548a6160a0a861659d, type: 3}
+  ultiSoundVolume: 1
+  ultiPunchSoundClip: {fileID: 8300000, guid: 57193ba8eb370614eafd3d8ec5422961, type: 3}
+  ultiPunchSoundVolume: 1
+  punchSoundDelay: 0
+  enableUltiLightShow: 1
+  ultiLightSpeed: 2
+  ultiLightIntensityMultiplier: 1.2
+  spawnUltiHeroLight: 1
+  enemyMoveSpeed: 1.2
+  enemyAttackRange: 1.1
+  enemyMaxHitDistance: 1.25
+  enemyAttackCooldown: 1.8
+  enemyBodyRadius: 0.45
+  enemySeparationRadius: 0.4
+  enemySeparationStrength: 0.4
+  comboResetThreshold: 1.8
+  maxConcurrentAttackers: 1
+  tokenTimeout: 2.8
+  waitingRingDistance: 2.05
+  circlePacingSpeed: 0.35

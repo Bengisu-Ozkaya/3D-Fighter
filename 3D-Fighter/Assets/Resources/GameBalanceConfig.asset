@@ -1,0 +1,272 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 56287e75b5d99274dbc23de2ad585b41, type: 3}
+  m_Name: GameBalanceConfig
+  m_EditorClassIdentifier: 
+  totalWaves: 10
+  respawnDelay: 1
+  spawnSpacing: 1.4
+  maxEnemiesPerWave: 8
+  easyProfile:
+    difficulty: 0
+    waveEnemyCounts: 01000000020000000300000002000000030000000400000005000000020000000300000004000000
+    waveStats:
+    - playerHealth: 100
+      playerPunchDamage: 10
+      playerUppercutDamage: 20
+      playerUltiDamage: 30
+      enemyHealth: 30
+      enemyPunchDamage: 5
+      enemyUppercutDamage: 10
+    - playerHealth: 100
+      playerPunchDamage: 10
+      playerUppercutDamage: 20
+      playerUltiDamage: 30
+      enemyHealth: 30
+      enemyPunchDamage: 7
+      enemyUppercutDamage: 15
+    - playerHealth: 100
+      playerPunchDamage: 10
+      playerUppercutDamage: 20
+      playerUltiDamage: 30
+      enemyHealth: 30
+      enemyPunchDamage: 10
+      enemyUppercutDamage: 20
+    - playerHealth: 110
+      playerPunchDamage: 10
+      playerUppercutDamage: 20
+      playerUltiDamage: 30
+      enemyHealth: 30
+      enemyPunchDamage: 7
+      enemyUppercutDamage: 15
+    - playerHealth: 110
+      playerPunchDamage: 10
+      playerUppercutDamage: 20
+      playerUltiDamage: 30
+      enemyHealth: 30
+      enemyPunchDamage: 10
+      enemyUppercutDamage: 20
+    - playerHealth: 110
+      playerPunchDamage: 10
+      playerUppercutDamage: 20
+      playerUltiDamage: 30
+      enemyHealth: 30
+      enemyPunchDamage: 12
+      enemyUppercutDamage: 25
+    - playerHealth: 110
+      playerPunchDamage: 10
+      playerUppercutDamage: 20
+      playerUltiDamage: 30
+      enemyHealth: 30
+      enemyPunchDamage: 15
+      enemyUppercutDamage: 25
+    - playerHealth: 120
+      playerPunchDamage: 12
+      playerUppercutDamage: 25
+      playerUltiDamage: 30
+      enemyHealth: 30
+      enemyPunchDamage: 10
+      enemyUppercutDamage: 20
+    - playerHealth: 120
+      playerPunchDamage: 12
+      playerUppercutDamage: 25
+      playerUltiDamage: 30
+      enemyHealth: 30
+      enemyPunchDamage: 12
+      enemyUppercutDamage: 25
+    - playerHealth: 120
+      playerPunchDamage: 12
+      playerUppercutDamage: 25
+      playerUltiDamage: 30
+      enemyHealth: 30
+      enemyPunchDamage: 15
+      enemyUppercutDamage: 25
+    minAttackInterval: 1.6
+    maxAttackInterval: 2.2
+    playerHitGracePeriod: 1.2
+    hitsToTriggerBlock: 2
+    blockChance: 1
+    blockDuration: 1
+    blockCooldown: 0.5
+  mediumProfile:
+    difficulty: 1
+    waveEnemyCounts: 01000000020000000300000002000000030000000400000005000000020000000300000004000000
+    waveStats:
+    - playerHealth: 100
+      playerPunchDamage: 15
+      playerUppercutDamage: 25
+      playerUltiDamage: 40
+      enemyHealth: 40
+      enemyPunchDamage: 8
+      enemyUppercutDamage: 15
+    - playerHealth: 100
+      playerPunchDamage: 15
+      playerUppercutDamage: 25
+      playerUltiDamage: 40
+      enemyHealth: 40
+      enemyPunchDamage: 10
+      enemyUppercutDamage: 20
+    - playerHealth: 100
+      playerPunchDamage: 15
+      playerUppercutDamage: 25
+      playerUltiDamage: 40
+      enemyHealth: 30
+      enemyPunchDamage: 12
+      enemyUppercutDamage: 20
+    - playerHealth: 120
+      playerPunchDamage: 20
+      playerUppercutDamage: 30
+      playerUltiDamage: 40
+      enemyHealth: 40
+      enemyPunchDamage: 10
+      enemyUppercutDamage: 20
+    - playerHealth: 120
+      playerPunchDamage: 20
+      playerUppercutDamage: 30
+      playerUltiDamage: 40
+      enemyHealth: 40
+      enemyPunchDamage: 12
+      enemyUppercutDamage: 20
+    - playerHealth: 120
+      playerPunchDamage: 20
+      playerUppercutDamage: 30
+      playerUltiDamage: 30
+      enemyHealth: 30
+      enemyPunchDamage: 12
+      enemyUppercutDamage: 25
+    - playerHealth: 120
+      playerPunchDamage: 20
+      playerUppercutDamage: 30
+      playerUltiDamage: 40
+      enemyHealth: 40
+      enemyPunchDamage: 17
+      enemyUppercutDamage: 25
+    - playerHealth: 150
+      playerPunchDamage: 20
+      playerUppercutDamage: 30
+      playerUltiDamage: 40
+      enemyHealth: 40
+      enemyPunchDamage: 12
+      enemyUppercutDamage: 20
+    - playerHealth: 150
+      playerPunchDamage: 20
+      playerUppercutDamage: 30
+      playerUltiDamage: 40
+      enemyHealth: 40
+      enemyPunchDamage: 15
+      enemyUppercutDamage: 25
+    - playerHealth: 150
+      playerPunchDamage: 20
+      playerUppercutDamage: 30
+      playerUltiDamage: 40
+      enemyHealth: 40
+      enemyPunchDamage: 17
+      enemyUppercutDamage: 30
+    minAttackInterval: 1.2
+    maxAttackInterval: 1.7
+    playerHitGracePeriod: 1
+    hitsToTriggerBlock: 2
+    blockChance: 1
+    blockDuration: 1.2
+    blockCooldown: 0.5
+  hardProfile:
+    difficulty: 2
+    waveEnemyCounts: 01000000020000000300000002000000030000000400000005000000020000000300000004000000
+    waveStats:
+    - playerHealth: 100
+      playerPunchDamage: 25
+      playerUppercutDamage: 30
+      playerUltiDamage: 50
+      enemyHealth: 50
+      enemyPunchDamage: 10
+      enemyUppercutDamage: 20
+    - playerHealth: 100
+      playerPunchDamage: 25
+      playerUppercutDamage: 30
+      playerUltiDamage: 50
+      enemyHealth: 50
+      enemyPunchDamage: 12
+      enemyUppercutDamage: 25
+    - playerHealth: 100
+      playerPunchDamage: 25
+      playerUppercutDamage: 30
+      playerUltiDamage: 50
+      enemyHealth: 50
+      enemyPunchDamage: 15
+      enemyUppercutDamage: 30
+    - playerHealth: 130
+      playerPunchDamage: 25
+      playerUppercutDamage: 30
+      playerUltiDamage: 50
+      enemyHealth: 50
+      enemyPunchDamage: 10
+      enemyUppercutDamage: 20
+    - playerHealth: 130
+      playerPunchDamage: 25
+      playerUppercutDamage: 30
+      playerUltiDamage: 50
+      enemyHealth: 50
+      enemyPunchDamage: 12
+      enemyUppercutDamage: 25
+    - playerHealth: 130
+      playerPunchDamage: 25
+      playerUppercutDamage: 30
+      playerUltiDamage: 50
+      enemyHealth: 50
+      enemyPunchDamage: 15
+      enemyUppercutDamage: 30
+    - playerHealth: 130
+      playerPunchDamage: 25
+      playerUppercutDamage: 30
+      playerUltiDamage: 50
+      enemyHealth: 50
+      enemyPunchDamage: 18
+      enemyUppercutDamage: 30
+    - playerHealth: 160
+      playerPunchDamage: 25
+      playerUppercutDamage: 35
+      playerUltiDamage: 50
+      enemyHealth: 50
+      enemyPunchDamage: 15
+      enemyUppercutDamage: 30
+    - playerHealth: 160
+      playerPunchDamage: 25
+      playerUppercutDamage: 35
+      playerUltiDamage: 50
+      enemyHealth: 40
+      enemyPunchDamage: 17
+      enemyUppercutDamage: 35
+    - playerHealth: 160
+      playerPunchDamage: 25
+      playerUppercutDamage: 35
+      playerUltiDamage: 50
+      enemyHealth: 40
+      enemyPunchDamage: 20
+      enemyUppercutDamage: 40
+    minAttackInterval: 0.9
+    maxAttackInterval: 1.3
+    playerHitGracePeriod: 0.7
+    hitsToTriggerBlock: 2
+    blockChance: 1
+    blockDuration: 1.4
+    blockCooldown: 0.5
+  colorTransitionDuration: 1.5
+  arenaLightTiers:
+  - tierName: "Dalga 1-3 (Beyaz / Do\u011Fal I\u015F\u0131k)"
+    lightColor: {r: 1, g: 1, b: 1, a: 1}
+    intensity: 10
+  - tierName: "Dalga 4-7 (Y\u0131rt\u0131c\u0131 Neon Mavi)"
+    lightColor: {r: 0, g: 0.7, b: 1, a: 1}
+    intensity: 11
+  - tierName: "Dalga 8-10 (Kan K\u0131rm\u0131z\u0131s\u0131 / Crimson)"
+    lightColor: {r: 1, g: 0.08, b: 0.08, a: 1}
+    intensity: 12

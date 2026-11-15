@@ -21,9 +21,27 @@ public class UIManager : MonoBehaviour
     [SerializeField] private GameObject blockButton;
     [SerializeField] private TMP_Text playerHealthText;
     [SerializeField] private GameObject characterPanel;
-    [Header("Karakter Seçimi")]
+    [Header("Arena Seçimi")]
+    [SerializeField] private GameObject arenaPanel;
+    private string selectedCharacterName = "";
+    private int selectedArenaIndex = 0;
+
+    [Header("Karakter Seçimi (ScriptableObject & Carousel)")]
+    [Tooltip("7 karakterin verisini tutan ScriptableObject (Boş bırakılırsa Resources/CharacterDatabase otomatik yüklenir)")]
+    [SerializeField] private CharacterDatabaseSO characterDatabase;
+    [Tooltip("CharacterChooseUI üzerindeki RawImage bileşeni (Assets/Character Texture içindeki RenderTexture'ları gösterir)")]
+    [SerializeField] private RawImage characterChooseRawImage;
+    [Tooltip("CharacterChooseUI altındaki Character Name Text bileşeni")]
+    [SerializeField] private TMP_Text characterNameText;
+    [Tooltip("Karakteri onaylamak için tıklanan CharacterChooseUI butonu")]
+    [SerializeField] private Button characterChooseButton;
+    [Tooltip("Sonraki karaktere geçen Next Button")]
+    [SerializeField] private Button nextCharacterButton;
+    [Tooltip("Önceki karaktere geçen Previous Button")]
+    [SerializeField] private Button previousCharacterButton;
     [SerializeField] private GameObject[] characterPrefabs;
     [SerializeField] private Transform playerSpawnPoint;
+    private int currentCharacterIndex = 0;
     private Difficulty selectedDifficulty;
     [Header("Referanslar")]
     [SerializeField] EnemySpawner enemySpawner;
@@ -101,6 +119,22 @@ public class UIManager : MonoBehaviour
         BindPunchButton();
         BindUppercutButton();
         BindBlockButton();
+
+        if (characterPanel == null)
+        {
+            FindCharacterPanel();
+        }
+
+        EnsureCharacterDatabaseLoaded();
+        BindCharacterSelectionUI();
+        UpdateCharacterSelectionUI();
+
+        if (arenaPanel == null)
+        {
+            FindArenaPanel();
+        }
+
+        BindArenaButtons();
     }
 
     void Start()
@@ -118,6 +152,8 @@ public class UIManager : MonoBehaviour
         }
 
         if (startPanel != null) startPanel.SetActive(true);
+        if (characterPanel != null) characterPanel.SetActive(false);
+        if (arenaPanel != null) arenaPanel.SetActive(false);
         if (victoryPanel != null) victoryPanel.SetActive(false);
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
         if (pausePanel != null) pausePanel.SetActive(false);
@@ -126,6 +162,12 @@ public class UIManager : MonoBehaviour
         if (mobileControlPanel != null)
         {
             mobileControlPanel.SetActive(startPanel == null || !startPanel.activeSelf);
+        }
+
+        // Başlangıçta menüdeyken Texture Arena önizlemeleri açık, seyirciler (Spectators) görünmez olsun
+        if (RingBoundary.Instance != null)
+        {
+            RingBoundary.Instance.PrepareForMenuPreview();
         }
     }
 
@@ -142,6 +184,8 @@ public class UIManager : MonoBehaviour
             {
                 bool canShowUlti = !playerController.usingUlti &&
                                    (startPanel == null || !startPanel.activeSelf) &&
+                                   (characterPanel == null || !characterPanel.activeSelf) &&
+                                   (arenaPanel == null || !arenaPanel.activeSelf) &&
                                    (pausePanel == null || !pausePanel.activeSelf) &&
                                    (gameOverPanel == null || !gameOverPanel.activeSelf) &&
                                    (victoryPanel == null || !victoryPanel.activeSelf) &&
@@ -162,10 +206,101 @@ public class UIManager : MonoBehaviour
                 ContinueButton();
             }
             else if (startPanel != null && !startPanel.activeSelf &&
+                     (characterPanel == null || !characterPanel.activeSelf) &&
+                     (arenaPanel == null || !arenaPanel.activeSelf) &&
                      (gameOverPanel == null || !gameOverPanel.activeSelf) &&
                      (victoryPanel == null || !victoryPanel.activeSelf))
             {
                 PauseGame();
+            }
+        }
+    }
+
+    void FindCharacterPanel()
+    {
+        if (characterPanel != null) return;
+        Canvas canvas = FindObjectOfType<Canvas>();
+        if (canvas != null)
+        {
+            Transform charT = canvas.transform.Find("Character Choose");
+            if (charT != null)
+            {
+                characterPanel = charT.gameObject;
+            }
+            else
+            {
+                foreach (Transform child in canvas.transform)
+                {
+                    if (child.name.ToLower().Contains("character") && child.GetComponent<Button>() == null)
+                    {
+                        characterPanel = child.gameObject;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    void FindArenaPanel()
+    {
+        if (arenaPanel != null) return;
+        Canvas canvas = FindObjectOfType<Canvas>();
+        if (canvas != null)
+        {
+            Transform arenaT = canvas.transform.Find("Arena Choose");
+            if (arenaT != null)
+            {
+                arenaPanel = arenaT.gameObject;
+            }
+            else
+            {
+                foreach (Transform child in canvas.transform)
+                {
+                    if (child.name.ToLower().Contains("arena") && child.GetComponent<Button>() == null)
+                    {
+                        arenaPanel = child.gameObject;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    void BindArenaButtons()
+    {
+        if (arenaPanel == null) FindArenaPanel();
+        if (arenaPanel == null) return;
+
+        Button[] buttons = arenaPanel.GetComponentsInChildren<Button>(true);
+        foreach (var btn in buttons)
+        {
+            if (btn == null) continue;
+            string btnName = btn.name.ToLowerInvariant();
+            string btnText = "";
+            TMP_Text tmp = btn.GetComponentInChildren<TMP_Text>(true);
+            if (tmp != null) btnText = tmp.text.ToLowerInvariant();
+            Text txt = btn.GetComponentInChildren<Text>(true);
+            if (txt != null) btnText += " " + txt.text.ToLowerInvariant();
+
+            // Inspector'da kalmış eski persistent ChooseCharacter eventlerini devre dışı bırak
+            DisablePersistentListeners(btn);
+            btn.onClick.RemoveAllListeners();
+
+            if (btnName.Contains("box") || btnText.Contains("box") || btnText.Contains("boks") || btnText.Contains("arena 1"))
+            {
+                btn.onClick.AddListener(() => ChooseArena(0));
+            }
+            else if (btnName.Contains("chinese") || btnText.Contains("chinese") || btnText.Contains("çin") || btnText.Contains("cin") || btnText.Contains("arena 2"))
+            {
+                btn.onClick.AddListener(() => ChooseArena(1));
+            }
+            else if (btnName.Contains("viking") || btnName.Contains("grand") || btnName.Contains("arena 3") || btnText.Contains("viking") || btnText.Contains("arena 3") || btnText.Contains("3"))
+            {
+                btn.onClick.AddListener(() => ChooseArena(2));
+            }
+            else
+            {
+                btn.onClick.AddListener(() => ChooseArena(0));
             }
         }
     }
@@ -401,8 +536,6 @@ public class UIManager : MonoBehaviour
             // Remove previous PlayerController events to avoid duplicate calls, but keep others
             trigger.triggers.RemoveAll(entry => 
             {
-                // Simple cleanup: we can just clear them all if we are setting it up dynamically
-                // But to be safe, just clear all triggers for PointerDown/PointerUp to reset our logic
                 return entry.eventID == EventTriggerType.PointerDown || entry.eventID == EventTriggerType.PointerUp;
             });
 
@@ -530,7 +663,226 @@ public class UIManager : MonoBehaviour
     {
         Time.timeScale = 1f;
         if (startPanel != null) startPanel.SetActive(false);
-        if (characterPanel != null) characterPanel.SetActive(true);
+        if (arenaPanel != null) arenaPanel.SetActive(false);
+
+        if (RingBoundary.Instance != null)
+        {
+            RingBoundary.Instance.PrepareForMenuPreview();
+        }
+
+        if (characterPanel == null) FindCharacterPanel();
+        if (characterPanel != null)
+        {
+            characterPanel.SetActive(true);
+            EnsureCharacterDatabaseLoaded();
+            BindCharacterSelectionUI();
+            UpdateCharacterSelectionUI();
+        }
+    }
+
+    private void EnsureCharacterDatabaseLoaded()
+    {
+        if (characterDatabase == null)
+        {
+            characterDatabase = Resources.Load<CharacterDatabaseSO>("CharacterDatabase");
+        }
+    }
+
+    /// <summary>
+    /// Character Choose panelindeki CharacterChooseUI (RawImage + Button), Character Name Text,
+    /// Next Button ve Previous Button referanslarını bulur ve olaylarını (onClick) bağlar.
+    /// </summary>
+    private void BindCharacterSelectionUI()
+    {
+        if (characterPanel == null) FindCharacterPanel();
+        if (characterPanel == null) return;
+
+        // 1. CharacterChooseUI (RawImage & Button) ve altındaki Character Name Text'i bul
+        Transform chooseUiTransform = characterPanel.transform.Find("CharacterChooseUI");
+        if (chooseUiTransform == null)
+        {
+            RawImage[] rawImages = characterPanel.GetComponentsInChildren<RawImage>(true);
+            if (rawImages != null && rawImages.Length > 0)
+            {
+                chooseUiTransform = rawImages[0].transform;
+            }
+        }
+
+        if (chooseUiTransform != null)
+        {
+            if (characterChooseRawImage == null)
+            {
+                characterChooseRawImage = chooseUiTransform.GetComponent<RawImage>();
+            }
+
+            if (characterChooseButton == null)
+            {
+                characterChooseButton = chooseUiTransform.GetComponent<Button>();
+            }
+
+            if (characterNameText == null)
+            {
+                Transform nameTextT = chooseUiTransform.Find("Character Name Text");
+                if (nameTextT != null)
+                {
+                    characterNameText = nameTextT.GetComponent<TMP_Text>();
+                }
+                if (characterNameText == null)
+                {
+                    characterNameText = chooseUiTransform.GetComponentInChildren<TMP_Text>(true);
+                }
+            }
+        }
+
+        // 2. Next Button ve Previous Button'ları bul ve bağla
+        Button[] buttons = characterPanel.GetComponentsInChildren<Button>(true);
+        foreach (var btn in buttons)
+        {
+            if (btn == null) continue;
+            string lowerName = btn.name.ToLowerInvariant();
+
+            if (lowerName.Contains("next") || lowerName.Contains("ileri") || lowerName.Contains("sonraki"))
+            {
+                nextCharacterButton = btn;
+            }
+            else if (lowerName.Contains("prev") || lowerName.Contains("geri") || lowerName.Contains("onceki") || lowerName.Contains("önceki"))
+            {
+                previousCharacterButton = btn;
+            }
+            else if (characterChooseButton == null && btn.gameObject.name.IndexOf("CharacterChooseUI", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                characterChooseButton = btn;
+            }
+        }
+
+        if (nextCharacterButton != null)
+        {
+            DisablePersistentListeners(nextCharacterButton);
+            nextCharacterButton.onClick.RemoveListener(NextCharacter);
+            nextCharacterButton.onClick.AddListener(NextCharacter);
+        }
+
+        if (previousCharacterButton != null)
+        {
+            DisablePersistentListeners(previousCharacterButton);
+            previousCharacterButton.onClick.RemoveListener(PreviousCharacter);
+            previousCharacterButton.onClick.AddListener(PreviousCharacter);
+        }
+
+        if (characterChooseButton != null)
+        {
+            DisablePersistentListeners(characterChooseButton);
+            characterChooseButton.onClick.RemoveListener(ConfirmCurrentCharacter);
+            characterChooseButton.onClick.AddListener(ConfirmCurrentCharacter);
+        }
+    }
+
+    private void DisablePersistentListeners(Button btn)
+    {
+        if (btn == null) return;
+        int count = btn.onClick.GetPersistentEventCount();
+        for (int i = 0; i < count; i++)
+        {
+            btn.onClick.SetPersistentListenerState(i, UnityEngine.Events.UnityEventCallState.Off);
+        }
+    }
+
+    /// <summary>
+    /// Next Button: Bir sonraki karaktere geçer.
+    /// Son karakterdeyken (7. karakter) basıldığında 1. karaktere (indeks 0) geri döner.
+    /// </summary>
+    public void NextCharacter()
+    {
+        EnsureCharacterDatabaseLoaded();
+        if (characterDatabase == null || characterDatabase.Count == 0) return;
+
+        currentCharacterIndex = characterDatabase.WrapIndex(currentCharacterIndex + 1);
+        UpdateCharacterSelectionUI();
+    }
+
+    /// <summary>
+    /// Previous Button: Bir önceki karaktere geçer.
+    /// İlk karakterdeyken (1. karakter) basıldığında sonuncu karaktere (7. karakter) geri döner.
+    /// </summary>
+    public void PreviousCharacter()
+    {
+        EnsureCharacterDatabaseLoaded();
+        if (characterDatabase == null || characterDatabase.Count == 0) return;
+
+        currentCharacterIndex = characterDatabase.WrapIndex(currentCharacterIndex - 1);
+        UpdateCharacterSelectionUI();
+    }
+
+    /// <summary>
+    /// Mevcut currentCharacterIndex'teki karakterin RenderTexture'ını ve ismini UI'a yansıtır.
+    /// </summary>
+    private void UpdateCharacterSelectionUI()
+    {
+        EnsureCharacterDatabaseLoaded();
+        if (characterDatabase == null || characterDatabase.Count == 0) return;
+
+        currentCharacterIndex = characterDatabase.WrapIndex(currentCharacterIndex);
+        CharacterEntry entry = characterDatabase.GetCharacter(currentCharacterIndex);
+        if (entry == null) return;
+
+        if (characterChooseRawImage != null && entry.previewTexture != null)
+        {
+            characterChooseRawImage.texture = entry.previewTexture;
+        }
+
+        if (characterNameText != null)
+        {
+            characterNameText.SetText(entry.displayName);
+        }
+
+        selectedCharacterName = entry.characterId;
+    }
+
+    /// <summary>
+    /// CharacterChooseUI üzerine tıklandığında mevcut gösterilen karakteri seçer ve Arena Seçim Paneline geçer.
+    /// </summary>
+    public void ConfirmCurrentCharacter()
+    {
+        EnsureCharacterDatabaseLoaded();
+        if (characterDatabase != null && characterDatabase.Count > 0)
+        {
+            CharacterEntry entry = characterDatabase.GetCharacter(currentCharacterIndex);
+            if (entry != null)
+            {
+                selectedCharacterName = entry.characterId;
+            }
+        }
+
+        if (characterPanel != null)
+        {
+            characterPanel.SetActive(false);
+        }
+
+        OpenArenaSelectPanel();
+    }
+
+    private void OpenArenaSelectPanel()
+    {
+        Time.timeScale = 1f;
+
+        // Arena seçim ekranındayken 3 arena önizleme kamerası açık, seyirciler (Spectators) görünmez olsun
+        if (RingBoundary.Instance != null)
+        {
+            RingBoundary.Instance.PrepareForMenuPreview();
+        }
+
+        if (arenaPanel == null) FindArenaPanel();
+
+        if (arenaPanel != null)
+        {
+            arenaPanel.SetActive(true);
+            BindArenaButtons();
+        }
+        else
+        {
+            Debug.LogWarning("Arena paneli bulunamadı! Varsayılan arenayla oyuna başlanıyor.");
+            StartGameWithSelections();
+        }
     }
 
     /// <summary>
@@ -636,6 +988,8 @@ public class UIManager : MonoBehaviour
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
         if (pausePanel != null) pausePanel.SetActive(false);
         if (startPanel != null) startPanel.SetActive(false);
+        if (characterPanel != null) characterPanel.SetActive(false);
+        if (arenaPanel != null) arenaPanel.SetActive(false);
         if (healtBarPanel != null) healtBarPanel.SetActive(true);   // ← Health bar göster
         if (mobileControlPanel != null) mobileControlPanel.SetActive(true);
         ShowPauseButton();
@@ -646,6 +1000,12 @@ public class UIManager : MonoBehaviour
         {
             playerController.ResetPlayerState();
             playerController.StartUltiCooldown();
+        }
+
+        FollowPlayer camFollow = FindObjectOfType<FollowPlayer>();
+        if (camFollow != null)
+        {
+            camFollow.AlignBehindTarget(snapImmediately: true);
         }
 
         // Spawner'ı aynı modda yeniden başlat
@@ -667,6 +1027,8 @@ public class UIManager : MonoBehaviour
         if (pausePanel != null) pausePanel.SetActive(false);
         if (pauseButton != null) pauseButton.SetActive(false);
         if (healtBarPanel != null) healtBarPanel.SetActive(false);
+        if (characterPanel != null) characterPanel.SetActive(false);
+        if (arenaPanel != null) arenaPanel.SetActive(false);
         if (startPanel != null) startPanel.SetActive(true);
         if (mobileControlPanel != null) mobileControlPanel.SetActive(false);
 
@@ -683,6 +1045,12 @@ public class UIManager : MonoBehaviour
         {
             enemySpawner.ResetSpawner();
         }
+
+        // Ana menüye dönüldüğünde tüm seyircileri tekrar görünmez yap ve önizleme kameralarını aç
+        if (RingBoundary.Instance != null)
+        {
+            RingBoundary.Instance.PrepareForMenuPreview();
+        }
         Debug.Log("<color=cyan>[ANA MENÜ]</color> Start Panel açıldı, oyun sıfırlandı.");
     }
 
@@ -691,8 +1059,10 @@ public class UIManager : MonoBehaviour
     /// </summary>
     public void PauseGame()
     {
-        // Start paneli, zafer veya yenilgi paneli açıkken duraklatma yapılamaz
+        // Menüler, zafer veya yenilgi paneli açıkken duraklatma yapılamaz
         if (startPanel != null && startPanel.activeSelf) return;
+        if (characterPanel != null && characterPanel.activeSelf) return;
+        if (arenaPanel != null && arenaPanel.activeSelf) return;
         if (victoryPanel != null && victoryPanel.activeSelf) return;
         if (gameOverPanel != null && gameOverPanel.activeSelf) return;
 
@@ -721,40 +1091,237 @@ public class UIManager : MonoBehaviour
         Debug.Log("<color=green>[OYUN DEVAM EDİYOR]</color> Pause Panel kapatıldı, oyun devam ediyor.");
     }
 
+    /// <summary>
+    /// Karakter seçim butonları tarafından çağrılır.
+    /// Seçilen karakteri kaydeder ve Arena Seçim Panelini açar.
+    /// </summary>
     public void ChooseCharacter(string Character)
     {
-        if (characterPanel != null) characterPanel.SetActive(false);
-        
-        if (playerController == null) playerController = FindObjectOfType<PlayerController>();
-        Vector3 spawnPos = Vector3.zero;
-        Quaternion spawnRot = Quaternion.identity;
+        // Eğer bu çağrı Arena Seçim Paneli açıkken geldiyse (Inspector'daki eski buton eventi veya arena tıklaması)
+        if (arenaPanel != null && arenaPanel.activeSelf)
+        {
+            Debug.LogWarning("[UIManager] Arena panelinde ChooseCharacter tetiklendi, ChooseArena'ya yönlendiriliyor: " + Character);
+            ChooseArena(Character);
+            return;
+        }
 
-        if (playerSpawnPoint != null)
+        EnsureCharacterDatabaseLoaded();
+
+        // Eğer CharacterDatabaseSO aktifse ve Next/Previous carousel kullanılıyorsa,
+        // Inspector'da sabit kalmış "Elvis-Player" argümanı yerine ekranda o an seçili olan karakteri (currentCharacterIndex) baz al!
+        if (characterDatabase != null && characterDatabase.Count > 0)
+        {
+            CharacterEntry currentEntry = characterDatabase.GetCharacter(currentCharacterIndex);
+            if (currentEntry != null)
+            {
+                selectedCharacterName = currentEntry.characterId;
+            }
+            else
+            {
+                selectedCharacterName = Character;
+            }
+        }
+        else
+        {
+            selectedCharacterName = Character;
+        }
+
+        if (characterPanel != null)
+        {
+            characterPanel.SetActive(false);
+        }
+
+        OpenArenaSelectPanel();
+    }
+
+    /// <summary>
+    /// Arena seçim butonları tarafından int index (0: Box Arena, 1: Ancient Chinese Arena, 2: Viking Arena) ile çağrılır.
+    /// Texture Arena altındaki ilgili Environment'ı seçer.
+    /// </summary>
+    public void ChooseArena(int arenaIndex)
+    {
+        selectedArenaIndex = Mathf.Clamp(arenaIndex, 0, 2);
+
+        if (arenaPanel != null)
+        {
+            arenaPanel.SetActive(false);
+        }
+
+        StartGameWithSelections();
+    }
+
+    /// <summary>
+    /// Arena seçim butonları tarafından isimle çağrılırsa yönlendirir.
+    /// </summary>
+    public void ChooseArena(string arenaName)
+    {
+        string lower = (arenaName ?? "").ToLowerInvariant();
+        if (lower.Contains("box") || lower.Contains("boks") || lower.Contains("1"))
+        {
+            ChooseArena(0);
+        }
+        else if (lower.Contains("chinese") || lower.Contains("çin") || lower.Contains("cin") || lower.Contains("2"))
+        {
+            ChooseArena(1);
+        }
+        else
+        {
+            ChooseArena(2);
+        }
+    }
+
+    /// <summary>
+    /// Karakter ve arena seçimleri tamamlandıktan sonra oyunu başlatır.
+    /// </summary>
+    private void StartGameWithSelections()
+    {
+        // 1. Seçilen arenayı aktif et
+        if (RingBoundary.Instance != null)
+        {
+            RingBoundary.Instance.SwitchEnvironment(selectedArenaIndex);
+        }
+
+        if (enemySpawner == null) enemySpawner = FindObjectOfType<EnemySpawner>();
+        if (enemySpawner != null)
+        {
+            enemySpawner.SetSelectedEnvironment(selectedArenaIndex);
+
+            EnsureCharacterDatabaseLoaded();
+            if (characterDatabase != null && characterDatabase.Count > 0)
+            {
+                CharacterEntry selectedEntry = characterDatabase.GetCharacter(currentCharacterIndex);
+                enemySpawner.SetExcludedCharacter(characterDatabase, currentCharacterIndex, selectedEntry);
+            }
+            else
+            {
+                enemySpawner.SetExcludedCharacterByName(selectedCharacterName);
+            }
+        }
+
+        // 2. Seçilen karakteri doğur
+        SpawnPlayerCharacter(selectedCharacterName);
+
+        // 3. HUD ve panelleri ayarla
+        Time.timeScale = 1f;
+        if (startPanel != null) startPanel.SetActive(false);
+        if (characterPanel != null) characterPanel.SetActive(false);
+        if (arenaPanel != null) arenaPanel.SetActive(false);
+        if (victoryPanel != null) victoryPanel.SetActive(false);
+        if (gameOverPanel != null) gameOverPanel.SetActive(false);
+        if (pausePanel != null) pausePanel.SetActive(false);
+        if (healtBarPanel != null) healtBarPanel.SetActive(true);
+        if (mobileControlPanel != null) mobileControlPanel.SetActive(true);
+        ShowPauseButton();
+
+        // 4. Düşman spawner'ı seçilen zorluk modunda başlat
+        if (enemySpawner != null)
+        {
+            switch (selectedDifficulty)
+            {
+                case Difficulty.Easy: enemySpawner.StartEasyMode(); break;
+                case Difficulty.Medium: enemySpawner.StartMidMode(); break;
+                case Difficulty.Hard: enemySpawner.StartHardMode(); break;
+            }
+        }
+
+        if (playerController != null)
+        {
+            playerController.StartUltiCooldown();
+        }
+
+        FollowPlayer camFollow = FindObjectOfType<FollowPlayer>();
+        if (camFollow != null && playerController != null)
+        {
+            camFollow.SetTarget(playerController.transform);
+            camFollow.SnapToTarget(); // Kamerayı anında yeni rotasyona (180 dereceye) hizala
+        }
+
+        Debug.Log($"<color=cyan>[OYUN BAŞLADI]</color> Karakter: {selectedCharacterName}, Arena Index: {selectedArenaIndex}, Zorluk: {selectedDifficulty}");
+    }
+
+    /// <summary>
+    /// Seçilen karakter prefab'ini seçilen Texture Arena Environment'ının merkezindeki spawn noktasında oluşturur.
+    /// </summary>
+    private void SpawnPlayerCharacter(string character)
+    {
+        if (playerController == null) playerController = FindObjectOfType<PlayerController>();
+
+        ArenaEnvironmentConfig activeArena = RingBoundary.Instance != null ? RingBoundary.Instance.CurrentArenaConfig : null;
+        float arenaGroundY = activeArena != null ? activeArena.groundY : 0.1f;
+
+        Vector3 spawnPos;
+        Quaternion spawnRot;
+
+        if (activeArena != null)
+        {
+            spawnPos = activeArena.playerSpawnPosition;
+            spawnPos.y = arenaGroundY;
+            spawnRot = Quaternion.Euler(0f, activeArena.playerSpawnRotationY, 0f);
+        }
+        else if (playerSpawnPoint != null)
         {
             spawnPos = playerSpawnPoint.position;
-            spawnRot = playerSpawnPoint.rotation;
+            spawnRot = Quaternion.Euler(0f, 180f, 0f);
         }
         else if (playerController != null)
         {
             spawnPos = playerController.transform.position;
-            spawnRot = playerController.transform.rotation;
+            spawnRot = Quaternion.Euler(0f, 180f, 0f);
         }
-
-        // Kullanıcının isteği üzerine Y rotasyonunu her zaman 180 dereceye (geriye bakacak şekilde) sabitliyoruz
-        Vector3 currentEuler = spawnRot.eulerAngles;
-        spawnRot = Quaternion.Euler(currentEuler.x, 180f, currentEuler.z);
+        else
+        {
+            spawnPos = new Vector3(-1000f, 0.1f, 1.0f);
+            spawnRot = Quaternion.Euler(0f, 180f, 0f);
+        }
 
         if (playerController != null && playerController.gameObject != null)
         {
+            // Eğer Main Camera eski oyuncunun child'ı olarak kalmışsa yok edilmemesi için ayır
+            FollowPlayer childCam = playerController.GetComponentInChildren<FollowPlayer>(true);
+            if (childCam != null)
+            {
+                childCam.transform.SetParent(null);
+            }
+
+            // Aynı karede FindObjectOfType<PlayerController>() çağrılarının eski objeyi bulmaması için hemen pasif yap
+            playerController.gameObject.SetActive(false);
             Destroy(playerController.gameObject);
         }
 
         GameObject selectedPrefab = null;
-        if (characterPrefabs != null)
+        EnsureCharacterDatabaseLoaded();
+
+        // 1. Öncelik: CharacterDatabaseSO üzerinden seçilen karakterin playerPrefab'ini al
+        if (characterDatabase != null && characterDatabase.Count > 0)
+        {
+            CharacterEntry entry = characterDatabase.GetCharacter(currentCharacterIndex);
+            if (entry != null && entry.playerPrefab != null)
+            {
+                selectedPrefab = entry.playerPrefab;
+                selectedCharacterName = entry.displayName;
+            }
+            else if (!string.IsNullOrEmpty(character))
+            {
+                int foundIdx = characterDatabase.FindCharacterIndex(character);
+                if (foundIdx >= 0)
+                {
+                    currentCharacterIndex = foundIdx;
+                    CharacterEntry byName = characterDatabase.GetCharacter(foundIdx);
+                    if (byName != null)
+                    {
+                        selectedPrefab = byName.playerPrefab != null ? byName.playerPrefab : byName.enemyPrefab;
+                        selectedCharacterName = byName.displayName;
+                    }
+                }
+            }
+        }
+
+        // 2. Fallback: Eski characterPrefabs dizisinden bul
+        if (selectedPrefab == null && characterPrefabs != null && !string.IsNullOrEmpty(character))
         {
             foreach (var prefab in characterPrefabs)
             {
-                if (prefab != null && prefab.name.ToLower().Contains(Character.ToLower()))
+                if (prefab != null && prefab.name.ToLower().Contains(character.ToLower()))
                 {
                     selectedPrefab = prefab;
                     break;
@@ -765,8 +1332,24 @@ public class UIManager : MonoBehaviour
         if (selectedPrefab != null)
         {
             GameObject newPlayer = Instantiate(selectedPrefab, spawnPos, spawnRot);
-            newPlayer.SetActive(true); // <--- Prefab eger kapali kaydedilmisse, sahnede aktif olsun
+            newPlayer.SetActive(true); // Prefab eger kapali kaydedilmisse, sahnede aktif olsun
+            newPlayer.tag = "Player";
+
+            // Güvenlik kontrolü: Eğer doğan prefab üzerinde EnemyController varsa kaldır, PlayerController yoksa ekle
+            EnemyController leftoverEnemy = newPlayer.GetComponent<EnemyController>();
+            if (leftoverEnemy != null)
+            {
+                DestroyImmediate(leftoverEnemy);
+            }
+
             playerController = newPlayer.GetComponent<PlayerController>();
+            if (playerController == null)
+            {
+                playerController = newPlayer.AddComponent<PlayerController>();
+            }
+
+            // Seçilen Texture Arena ortamının tam koordinatına ve zemin yüksekliğine (groundY) yerleştir
+            playerController.TeleportToArena(spawnPos, spawnRot, arenaGroundY);
 
             // Sağlık barını yeni karaktere bağla
             if (playerController != null && healtBarPanel != null)
@@ -784,44 +1367,12 @@ public class UIManager : MonoBehaviour
         }
         else
         {
-            Debug.LogWarning("Karakter prefab'i bulunamadi veya atanmadi: " + Character);
+            Debug.LogWarning("Karakter prefab'i bulunamadi veya atanmadi: " + character);
         }
 
         BindUltiButton();
         BindPunchButton();
         BindUppercutButton();
         BindBlockButton();
-
-        Time.timeScale = 1f;
-        if (victoryPanel != null) victoryPanel.SetActive(false);
-        if (gameOverPanel != null) gameOverPanel.SetActive(false);
-        if (pausePanel != null) pausePanel.SetActive(false);
-        if (healtBarPanel != null) healtBarPanel.SetActive(true);
-        if (mobileControlPanel != null) mobileControlPanel.SetActive(true);
-        ShowPauseButton(); 
-
-        if (enemySpawner != null)
-        {
-            switch (selectedDifficulty)
-            {
-                case Difficulty.Easy: enemySpawner.StartEasyMode(); break;
-                case Difficulty.Medium: enemySpawner.StartMidMode(); break;
-                case Difficulty.Hard: enemySpawner.StartHardMode(); break;
-            }
-        }
-        
-        if (playerController != null)
-        {
-            playerController.StartUltiCooldown();
-        }
-        
-        FollowPlayer camFollow = FindObjectOfType<FollowPlayer>();
-        if (camFollow != null && playerController != null)
-        {
-            camFollow.SetTarget(playerController.transform);
-            camFollow.SnapToTarget(); // Kamerayı anında yeni rotasyona (180 dereceye) hizala
-        }
-        
-        Debug.Log("Oyuna baslandi! Secilen karakter: " + Character + ", Zorluk: " + selectedDifficulty);
     }
 }

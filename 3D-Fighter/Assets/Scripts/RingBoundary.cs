@@ -12,41 +12,46 @@ public enum ArenaShape
 public class ArenaEnvironmentConfig
 {
     [Tooltip("Saha / Ortam Adı")]
-    public string environmentName = "Environment 1";
+    public string environmentName = "Box Arena";
 
-    [Tooltip("Hierarchy'deki Environment GameObject'i (Örn: Environment 1, Environment 2)")]
+    [Tooltip("Texture Arena altındaki Environment GameObject'i")]
     public GameObject environmentObject;
+
+    [Tooltip("Bu arenanın altındaki Spectators (Seyirci) GameObject'i")]
+    public GameObject spectatorsObject;
+
+    [Tooltip("Bu arenanın önizleme (RenderTexture) Kamerası")]
+    public Camera previewCamera;
 
     [Tooltip("Saha Sınır Şekli: OctagonPosts (Kafes & 8 Direk) veya Circle (Dairesel Alan)")]
     public ArenaShape arenaShape = ArenaShape.OctagonPosts;
 
     [Tooltip("Sahanın dünya koordinatlarındaki merkezi")]
-    public Vector3 center = new Vector3(0.27f, 0f, 2.67f);
+    public Vector3 center = new Vector3(-999.73f, 0.1f, -0.76f);
 
     [Tooltip("Sahanın iç yarıçapı (Karakterlerin dışına çıkamayacağı sınır)")]
     public float radius = 2.65f;
 
     [Tooltip("Bu sahada oyuncunun doğacağı pozisyon")]
-    public Vector3 playerSpawnPosition = new Vector3(0f, 0f, 4.7f);
+    public Vector3 playerSpawnPosition = new Vector3(-1000f, 0.1f, 1.0f);
 
     [Tooltip("Bu sahada oyuncunun başlangıç bakış açısı (Y rotasyonu)")]
     public float playerSpawnRotationY = 180f;
 
     [Tooltip("Bu sahada düşmanların doğacağı merkez pozisyon")]
-    public Vector3 enemySpawnPosition = new Vector3(0f, 0f, 0.5f);
+    public Vector3 enemySpawnPosition = new Vector3(-1000f, 0.1f, -2.2f);
 
     [Tooltip("Bu sahada düşmanların başlangıç bakış açısı (Y rotasyonu)")]
     public float enemySpawnRotationY = 0f;
 
     [Tooltip("Sahanın taban zemin Y yüksekliği")]
-    public float groundY = 0f;
+    public float groundY = 0.1f;
 }
 
 /// <summary>
 /// Çoklu Saha & Ring Sınırlandırma Sistemi.
-/// Her 3 dalgada bir çevre (Environment) değiştiğinde sahanın geometrik sınırını,
-/// köşe direklerini ve dairesel duvarlarını dinamik olarak yönetir.
-/// Karakterlerin ringden ve evlerle çevrili dairesel köy alanından dışarı çıkmasını engeller.
+/// Texture Arena altındaki 3 Environment'ı (0: Box Arena, 1: Ancient Chinese Arena, 2: Viking Arena) yönetir.
+/// Arena seçim ekranında tüm seyircileri (Spectators) gizler, arena seçildikten sonra aktif arenanın seyircilerini görünür yapar.
 /// </summary>
 [DefaultExecutionOrder(-100)]
 public class RingBoundary : MonoBehaviour
@@ -69,11 +74,15 @@ public class RingBoundary : MonoBehaviour
         }
     }
 
-    [Header("Environment & Saha Listesi")]
-    [Tooltip("Oyundaki tüm dövüş sahaları. Her 3 dalgada bir bu listedeki sahalar sırasıyla aktifleşir.")]
+    [Header("ScriptableObject Veritabanı")]
+    [Tooltip("3 arenanın koordinat ve sınır bilgilerini tutan ScriptableObject (Resources/ArenaDatabase)")]
+    [SerializeField] private ArenaDatabaseSO arenaDatabase;
+
+    [Header("Environment & Saha Listesi (Texture Arena Altındaki 3 Ortam)")]
+    [Tooltip("Texture Arena altındaki dövüş sahaları (0: Box Arena, 1: Ancient Chinese Arena, 2: Viking Arena)")]
     [SerializeField] private List<ArenaEnvironmentConfig> environments = new List<ArenaEnvironmentConfig>();
 
-    [Tooltip("Şu anda aktif olan saha indeksi (0: Environment 1, 1: Environment 2)")]
+    [Tooltip("Şu anda aktif olan saha indeksi (0: Box Arena, 1: Ancient Chinese Arena, 2: Viking Arena)")]
     [SerializeField] private int activeEnvironmentIndex = 0;
 
     [Header("Köşe Direği & Duvar Ayarları")]
@@ -89,6 +98,9 @@ public class RingBoundary : MonoBehaviour
     [Header("Gizmo / Editör Görselleştirme")]
     [SerializeField] private bool showGizmos = true;
 
+    private GameObject textureArenaRoot;
+    private bool isInGameplayMode = false;
+
     // Oktagon kafesi için çalışma zamanında hesaplanan geometri
     private List<Vector3> postPositions = new List<Vector3>();
     private List<Vector3> inwardNormals = new List<Vector3>();
@@ -100,7 +112,7 @@ public class RingBoundary : MonoBehaviour
         ? environments[activeEnvironmentIndex]
         : null;
 
-    public Vector3 ArenaCenter => CurrentArenaConfig != null ? CurrentArenaConfig.center : new Vector3(0.27f, 0f, 2.67f);
+    public Vector3 ArenaCenter => CurrentArenaConfig != null ? CurrentArenaConfig.center : new Vector3(-999.73f, 0.1f, -0.76f);
     public float PostRadius => postRadius;
 
     void Awake()
@@ -115,8 +127,12 @@ public class RingBoundary : MonoBehaviour
             return;
         }
 
+        DisableLegacyRootDuplicateArenas();
         AutoSetupEnvironmentsIfNeeded();
         InitializeCurrentArena();
+
+        // Başlangıçta (Menüde / Arena Seçiminde) tüm seyirciler görünmez olsun, 3 arena önizleme için açık kalsın
+        PrepareForMenuPreview();
     }
 
     void Start()
@@ -126,8 +142,10 @@ public class RingBoundary : MonoBehaviour
             InitializeCurrentArena();
         }
 
-        // Başlangıçta 0. sahayı (Environment 1) aktif kıl
-        ApplyEnvironmentActiveStates();
+        if (!isInGameplayMode)
+        {
+            PrepareForMenuPreview();
+        }
 
         if (generatePhysicalColliders)
         {
@@ -136,72 +154,310 @@ public class RingBoundary : MonoBehaviour
     }
 
     /// <summary>
-    /// Eğer Inspector'dan environments listesi girilmemişse sahnedeki Environment 1 ve 2'yi otomatik bulup kurar
+    /// Sahnede Texture Arena dışında kök dizinde kalmış eski kopya arena ve seyirci objelerini kapatır.
+    /// Böylece sadece Texture Arena altındaki 3 environment kullanılır.
+    /// </summary>
+    private void DisableLegacyRootDuplicateArenas()
+    {
+        foreach (var rootGo in UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects())
+        {
+            if (rootGo == null) continue;
+            string trimmed = rootGo.name.Trim();
+
+            if (trimmed.Equals("Texture Arena", StringComparison.OrdinalIgnoreCase))
+            {
+                textureArenaRoot = rootGo;
+                if (!textureArenaRoot.activeSelf)
+                {
+                    textureArenaRoot.SetActive(true);
+                }
+                continue;
+            }
+
+            // Kök dizindeki eski kopya arenaları ve bağımsız Spectators objesini kapat
+            if (trimmed.Equals("Box Arena Environment", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Equals("Ancient Chinese Arena Environment", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Equals("Viking Arena Environment", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Equals("Spectators", StringComparison.OrdinalIgnoreCase))
+            {
+                if (rootGo.activeSelf)
+                {
+                    rootGo.SetActive(false);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Texture Arena altındaki 3 Environment'ı (Box Arena, Ancient Chinese Arena, Viking Arena)
+    /// otomatik olarak bulur, seyirci (Spectators) ve önizleme kamerası referanslarını bağlar.
     /// </summary>
     public void AutoSetupEnvironmentsIfNeeded()
     {
-        if (environments == null)
+        if (arenaDatabase == null)
         {
-            environments = new List<ArenaEnvironmentConfig>();
+            arenaDatabase = Resources.Load<ArenaDatabaseSO>("ArenaDatabase");
+        }
+        if (arenaDatabase != null)
+        {
+            arenaDatabase.EnsureInitialized();
         }
 
-        if (environments.Count == 0)
+        if (textureArenaRoot == null)
         {
-            // Sahnedeki Environment objelerini bul
-            GameObject env1Go = null;
-            GameObject env2Go = null;
-
-            foreach (var rootGo in UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects())
+            DisableLegacyRootDuplicateArenas();
+            if (textureArenaRoot == null)
             {
-                string trimmed = rootGo.name.Trim();
-                if (trimmed.Equals("Environment 1", StringComparison.OrdinalIgnoreCase) || trimmed.Equals("Environment1", StringComparison.OrdinalIgnoreCase))
+                textureArenaRoot = GameObject.Find("Texture Arena");
+            }
+        }
+
+        // Eğer mevcut liste 3 arenadan azsa veya Texture Arena altındaki objelere bağlı değilse baştan kur
+        bool needsRebuild = (environments == null || environments.Count < 3);
+        if (!needsRebuild && textureArenaRoot != null)
+        {
+            for (int i = 0; i < environments.Count; i++)
+            {
+                var env = environments[i];
+                if (env == null || env.environmentObject == null || !env.environmentObject.transform.IsChildOf(textureArenaRoot.transform))
                 {
-                    env1Go = rootGo;
-                }
-                else if (trimmed.Equals("Environment 2", StringComparison.OrdinalIgnoreCase) || trimmed.Equals("Environment2", StringComparison.OrdinalIgnoreCase))
-                {
-                    env2Go = rootGo;
+                    needsRebuild = true;
+                    break;
                 }
             }
+        }
 
-            // 1. Environment 1 (Oktagon Kafesi)
+        if (needsRebuild)
+        {
+            environments = new List<ArenaEnvironmentConfig>();
+
+            GameObject boxEnvGo = FindTextureArenaChild("Box Arena");
+            GameObject chineseEnvGo = FindTextureArenaChild("Chinese");
+            GameObject vikingEnvGo = FindTextureArenaChild("Viking");
+
+            // 0: Box Arena Environment
+            ArenaEntry boxEntry = arenaDatabase != null ? arenaDatabase.GetArena(0) : null;
+            ArenaEnvironmentConfig env0 = new ArenaEnvironmentConfig
+            {
+                environmentName = boxEntry != null ? boxEntry.displayName : "Box Arena",
+                environmentObject = boxEnvGo,
+                arenaShape = boxEntry != null ? boxEntry.arenaShape : ArenaShape.OctagonPosts,
+                center = boxEntry != null ? boxEntry.center : new Vector3(-999.73f, 0.1f, -0.76f),
+                radius = boxEntry != null ? boxEntry.radius : 2.65f,
+                groundY = boxEntry != null ? boxEntry.groundY : 0.1f,
+                playerSpawnPosition = boxEntry != null ? boxEntry.playerSpawnPosition : new Vector3(-1000f, 0.1f, 1.0f),
+                playerSpawnRotationY = boxEntry != null ? boxEntry.playerSpawnRotationY : 180f,
+                enemySpawnPosition = boxEntry != null ? boxEntry.enemySpawnPosition : new Vector3(-1000f, 0.1f, -2.2f),
+                enemySpawnRotationY = boxEntry != null ? boxEntry.enemySpawnRotationY : 0f
+            };
+            BindSubObjectsAndCalibrate(env0);
+            environments.Add(env0);
+
+            // 1: Ancient Chinese Arena Environment
+            ArenaEntry chineseEntry = arenaDatabase != null ? arenaDatabase.GetArena(1) : null;
             ArenaEnvironmentConfig env1 = new ArenaEnvironmentConfig
             {
-                environmentName = "Environment 1 (Kafes Ring)",
-                environmentObject = env1Go,
-                arenaShape = ArenaShape.OctagonPosts,
-                center = new Vector3(0.27f, 0f, 2.67f),
-                radius = 2.65f,
-                playerSpawnPosition = new Vector3(0f, 0f, 4.7f),
-                playerSpawnRotationY = 180f,
-                enemySpawnPosition = new Vector3(0f, 0f, 0.5f),
-                enemySpawnRotationY = 0f,
-                groundY = 0f
+                environmentName = chineseEntry != null ? chineseEntry.displayName : "Ancient Chinese Arena",
+                environmentObject = chineseEnvGo,
+                arenaShape = chineseEntry != null ? chineseEntry.arenaShape : ArenaShape.Circle,
+                center = chineseEntry != null ? chineseEntry.center : new Vector3(-1022.5f, 0.1f, -0.6f),
+                radius = chineseEntry != null ? chineseEntry.radius : 2.85f,
+                groundY = chineseEntry != null ? chineseEntry.groundY : 0.1f,
+                playerSpawnPosition = chineseEntry != null ? chineseEntry.playerSpawnPosition : new Vector3(-1022.5f, 0.1f, 1.2f),
+                playerSpawnRotationY = chineseEntry != null ? chineseEntry.playerSpawnRotationY : 180f,
+                enemySpawnPosition = chineseEntry != null ? chineseEntry.enemySpawnPosition : new Vector3(-1022.5f, 0.1f, -2.1f),
+                enemySpawnRotationY = chineseEntry != null ? chineseEntry.enemySpawnRotationY : 0f
             };
+            BindSubObjectsAndCalibrate(env1);
             environments.Add(env1);
 
-            // Environment 2 geçiş sistemi devre dışı bırakıldı, Environment 2 sahnede varsa kapatılır
-            if (env2Go != null)
+            // 2: Viking Arena Environment
+            ArenaEntry vikingEntry = arenaDatabase != null ? arenaDatabase.GetArena(2) : null;
+            ArenaEnvironmentConfig env2 = new ArenaEnvironmentConfig
             {
-                env2Go.SetActive(false);
-            }
+                environmentName = vikingEntry != null ? vikingEntry.displayName : "Viking Arena",
+                environmentObject = vikingEnvGo,
+                arenaShape = vikingEntry != null ? vikingEntry.arenaShape : ArenaShape.Circle,
+                center = vikingEntry != null ? vikingEntry.center : new Vector3(-1200f, 0.32f, 0.6f),
+                radius = vikingEntry != null ? vikingEntry.radius : 2.85f,
+                groundY = vikingEntry != null ? vikingEntry.groundY : 0.32f,
+                playerSpawnPosition = vikingEntry != null ? vikingEntry.playerSpawnPosition : new Vector3(-1200f, 0.32f, 2.3f),
+                playerSpawnRotationY = vikingEntry != null ? vikingEntry.playerSpawnRotationY : 180f,
+                enemySpawnPosition = vikingEntry != null ? vikingEntry.enemySpawnPosition : new Vector3(-1200f, 0.32f, -1.0f),
+                enemySpawnRotationY = vikingEntry != null ? vikingEntry.enemySpawnRotationY : 0f
+            };
+            BindSubObjectsAndCalibrate(env2);
+            environments.Add(env2);
         }
         else
         {
-            // Listede obje referansları boş kalmışsa sahneden otomatik eşle
-            foreach (var env in environments)
+            for (int i = 0; i < environments.Count; i++)
             {
-                if (env.environmentObject == null)
+                BindSubObjectsAndCalibrate(environments[i]);
+            }
+        }
+    }
+
+    private GameObject FindTextureArenaChild(string keyword)
+    {
+        if (textureArenaRoot != null)
+        {
+            foreach (Transform child in textureArenaRoot.transform)
+            {
+                if (child != null && child.name.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0)
                 {
-                    foreach (var rootGo in UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects())
-                    {
-                        if (rootGo.name.Trim().IndexOf(env.environmentName.Split(' ')[0], StringComparison.OrdinalIgnoreCase) >= 0)
-                        {
-                            env.environmentObject = rootGo;
-                            break;
-                        }
-                    }
+                    return child.gameObject;
                 }
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Environment altındaki Spectators, Preview Camera, Light ve Floor nesnelerini bulup bağlar.
+    /// Önizleme kameralarının MainCamera etiketini ve fazladan AudioListener'larını temizler.
+    /// </summary>
+    private void BindSubObjectsAndCalibrate(ArenaEnvironmentConfig config)
+    {
+        if (config == null || config.environmentObject == null) return;
+
+        Transform envTransform = config.environmentObject.transform;
+
+        // 1. Spectators nesnesini bul
+        if (config.spectatorsObject == null)
+        {
+            foreach (Transform t in config.environmentObject.GetComponentsInChildren<Transform>(true))
+            {
+                if (t == envTransform) continue;
+                if (t.name.StartsWith("Spectators", StringComparison.OrdinalIgnoreCase) ||
+                    t.GetComponent<SpectatorManager>() != null)
+                {
+                    config.spectatorsObject = t.gameObject;
+                    break;
+                }
+            }
+        }
+
+        // 2. Önizleme (RenderTexture) kamerasını bul ve MainCamera çakışmasını önle
+        Camera[] cams = config.environmentObject.GetComponentsInChildren<Camera>(true);
+        foreach (var cam in cams)
+        {
+            if (cam == null) continue;
+            if (cam.GetComponent<FollowPlayer>() != null) continue;
+
+            config.previewCamera = cam;
+
+            // Camera.main'in oyuncu kamerası yerine önizleme kamerasını döndürmesini engelle!
+            if (cam.CompareTag("MainCamera"))
+            {
+                cam.tag = "Untagged";
+            }
+
+            // Çoklu AudioListener uyarısını engelle
+            AudioListener listener = cam.GetComponent<AudioListener>();
+            if (listener != null)
+            {
+                listener.enabled = false;
+            }
+        }
+
+        // 3. Box Arena altındaki Light objesi kapalıysa Point Light'ların çalışması için aktif et
+        Transform lightChild = envTransform.Find("Light");
+        if (lightChild != null)
+        {
+            if (!lightChild.gameObject.activeSelf)
+            {
+                lightChild.gameObject.SetActive(true);
+            }
+            // İçindeki ekstra Directional Light varsa sahne güneşiyle çakışmaması için sadece Point Light'ları açık tut
+            foreach (var l in lightChild.GetComponentsInChildren<Light>(true))
+            {
+                if (l != null && l.type == LightType.Directional)
+                {
+                    l.gameObject.SetActive(false);
+                }
+                else if (l != null && l.type == LightType.Point)
+                {
+                    l.gameObject.SetActive(true);
+                }
+            }
+        }
+
+        // 4. Floor nesnesinden zemin Y yüksekliğini (groundY) hassas olarak doğrula.
+        // ÖNEMLİ: Box Arena'da "Floor (1)" (y = 4.16, 180° ters çevrilmiş tavan) ve
+        // Ancient Chinese Arena'da "Floor (4..7)" (duvarlar ve tavan) da "Floor" ile başladığı için
+        // sadece yukarı bakan yatay zeminleri (t.up.y > 0.8f) filtreleyip EN ALTTAKİ gerçek tabanı seçiyoruz!
+        Transform lowestFloor = null;
+        float lowestFloorY = float.MaxValue;
+
+        foreach (Transform t in config.environmentObject.GetComponentsInChildren<Transform>(true))
+        {
+            if (t == envTransform) continue;
+            if (t.name.StartsWith("Floor", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!t.gameObject.activeSelf) t.gameObject.SetActive(true);
+
+                // Tavanları (180° dönük -> t.up.y ≈ -1) ve yan duvarları (90° dönük -> t.up.y ≈ 0) ele
+                if (Vector3.Dot(t.up, Vector3.up) < 0.8f)
+                {
+                    continue;
+                }
+
+                if (t.position.y < lowestFloorY)
+                {
+                    lowestFloorY = t.position.y;
+                    lowestFloor = t;
+                }
+            }
+        }
+
+        if (lowestFloor != null)
+        {
+            // Box Arena ve Chinese Arena'da gerçek Floor.y = -0.49 iken karakterler groundY = 0.1'de durur (fark +0.59)
+            float calculatedGroundY = Mathf.Round((lowestFloorY + 0.59f) * 100f) / 100f;
+            config.groundY = calculatedGroundY;
+            config.center.y = calculatedGroundY;
+            config.playerSpawnPosition.y = calculatedGroundY;
+            config.enemySpawnPosition.y = calculatedGroundY;
+        }
+    }
+
+    /// <summary>
+    /// Menüde ve Arena Seçimi ekranında çağrılır:
+    /// Texture Arena altındaki 3 ortamı ve önizleme kameralarını açık tutar (RenderTexture'lar görünsün diye),
+    /// ancak 3 ortamın altındaki tüm Spectators (seyirci) nesnelerini GÖRÜNMEZ (SetActive(false)) yapar.
+    /// </summary>
+    public void PrepareForMenuPreview()
+    {
+        isInGameplayMode = false;
+        AutoSetupEnvironmentsIfNeeded();
+        if (environments == null) return;
+
+        if (textureArenaRoot != null && !textureArenaRoot.activeSelf)
+        {
+            textureArenaRoot.SetActive(true);
+        }
+
+        for (int i = 0; i < environments.Count; i++)
+        {
+            var env = environments[i];
+            if (env == null) continue;
+
+            if (env.environmentObject != null && !env.environmentObject.activeSelf)
+            {
+                env.environmentObject.SetActive(true);
+            }
+
+            if (env.previewCamera != null)
+            {
+                env.previewCamera.gameObject.SetActive(true);
+                env.previewCamera.enabled = true;
+            }
+
+            // Arena seçiminde (ve menüde) seyirciler görünmez olsun
+            if (env.spectatorsObject != null && env.spectatorsObject.activeSelf)
+            {
+                env.spectatorsObject.SetActive(false);
             }
         }
     }
@@ -213,13 +469,15 @@ public class RingBoundary : MonoBehaviour
 
     public void InitializeCurrentArena()
     {
-        if (environments == null || environments.Count == 0)
+        if (environments == null || environments.Count < 3)
         {
             AutoSetupEnvironmentsIfNeeded();
         }
 
         var config = CurrentArenaConfig;
         if (config == null) return;
+
+        BindSubObjectsAndCalibrate(config);
 
         if (config.arenaShape == ArenaShape.OctagonPosts)
         {
@@ -230,11 +488,12 @@ public class RingBoundary : MonoBehaviour
             isInitialized = true;
         }
 
-        Debug.Log($"<color=green>[RingBoundary]</color> Aktif Saha: {config.environmentName} | Merkez: {config.center} | Yarıçap: {config.radius:F2}m | Şekil: {config.arenaShape}");
+        Debug.Log($"<color=green>[RingBoundary]</color> Aktif Saha: {config.environmentName} | Merkez: {config.center} | Zemin Y: {config.groundY:F2} | Yarıçap: {config.radius:F2}m | Şekil: {config.arenaShape}");
     }
 
     /// <summary>
-    /// Sahnedeki Oktagon kafesini ve köşe direklerini otomatik tespit edip geometrisini kurar
+    /// Sadece ilgili ArenaEnvironmentConfig'in kendi environmentObject hiyerarşisi içindeki
+    /// Oktagon kafesini ve köşe direklerini tespit edip geometrisini kurar.
     /// </summary>
     void InitializeOctagonArena(ArenaEnvironmentConfig config)
     {
@@ -242,10 +501,10 @@ public class RingBoundary : MonoBehaviour
         inwardNormals.Clear();
 
         Transform cornersParent = null;
-        GameObject octogonGo = GameObject.Find("Octogon (1)");
-        if (octogonGo == null)
+
+        if (config.environmentObject != null)
         {
-            foreach (var t in FindObjectsOfType<Transform>(true))
+            foreach (var t in config.environmentObject.GetComponentsInChildren<Transform>(true))
             {
                 if (t.name.IndexOf("Octogon", StringComparison.OrdinalIgnoreCase) >= 0 ||
                     t.name.IndexOf("Octagon", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -258,32 +517,34 @@ public class RingBoundary : MonoBehaviour
                     }
                 }
             }
-        }
-        else
-        {
-            cornersParent = octogonGo.transform.Find("Corners");
-        }
 
-        if (cornersParent == null)
-        {
-            GameObject cGo = GameObject.Find("Corners");
-            if (cGo != null) cornersParent = cGo.transform;
-        }
-
-        if (cornersParent != null)
-        {
-            foreach (Transform child in cornersParent)
+            if (cornersParent == null)
             {
-                postPositions.Add(child.position);
-            }
-        }
-        else
-        {
-            foreach (var t in FindObjectsOfType<Transform>(true))
-            {
-                if (t.name.StartsWith("EdgeCorner", StringComparison.OrdinalIgnoreCase))
+                foreach (var t in config.environmentObject.GetComponentsInChildren<Transform>(true))
                 {
-                    postPositions.Add(t.position);
+                    if (t.name.Equals("Corners", StringComparison.OrdinalIgnoreCase) && t.childCount >= 4)
+                    {
+                        cornersParent = t;
+                        break;
+                    }
+                }
+            }
+
+            if (cornersParent != null)
+            {
+                foreach (Transform child in cornersParent)
+                {
+                    postPositions.Add(child.position);
+                }
+            }
+            else
+            {
+                foreach (var t in config.environmentObject.GetComponentsInChildren<Transform>(true))
+                {
+                    if (t.name.StartsWith("EdgeCorner", StringComparison.OrdinalIgnoreCase))
+                    {
+                        postPositions.Add(t.position);
+                    }
                 }
             }
         }
@@ -294,6 +555,10 @@ public class RingBoundary : MonoBehaviour
             foreach (var p in postPositions) sum += p;
             config.center = sum / postPositions.Count;
             config.center.y = config.groundY;
+
+            // Spawn noktalarını sahanın gerçek merkezine göre hizala
+            config.playerSpawnPosition = new Vector3(config.center.x - 0.27f, config.groundY, config.center.z + 1.76f);
+            config.enemySpawnPosition = new Vector3(config.center.x - 0.27f, config.groundY, config.center.z - 1.44f);
 
             postPositions.Sort((a, b) =>
             {
@@ -318,7 +583,9 @@ public class RingBoundary : MonoBehaviour
                 if (Vector3.Dot(n, toCenter) < 0f) n = -n;
                 inwardNormals.Add(n);
 
-                float dist = Vector3.Distance(new Vector3(pCurrent.x, 0f, pCurrent.z), config.center);
+                Vector2 pFlat = new Vector2(pCurrent.x, pCurrent.z);
+                Vector2 cFlat = new Vector2(config.center.x, config.center.z);
+                float dist = Vector2.Distance(pFlat, cFlat);
                 if (dist < minRadius) minRadius = dist;
             }
 
@@ -333,7 +600,6 @@ public class RingBoundary : MonoBehaviour
 
     void BuildFallbackOctagon(ArenaEnvironmentConfig config)
     {
-        config.center = new Vector3(0.27f, config.groundY, 2.67f);
         float radius = 2.78f;
         postPositions.Clear();
         inwardNormals.Clear();
@@ -366,15 +632,17 @@ public class RingBoundary : MonoBehaviour
     }
 
     /// <summary>
-    /// Ortamlar arasında geçiş yapar (Örn: Her 3 dalgada bir 0 -> 1 -> 0 döngüsü).
-    /// Objeleri açıp kapatır, oyuncuyu ve spawner'ı yeni sahadaki yerlerine taşır.
+    /// Kullanıcı arenayı seçtikten sonra (veya maç başlarken) seçilen Texture Arena ortamını aktif eder,
+    /// o arenanın altındaki Spectators (seyirci) nesnesini GÖRÜNÜR (SetActive(true)) yapar,
+    /// diğer arenaların seyircilerini gizler ve fiziksel sınırları kurar.
     /// </summary>
     public void SwitchEnvironment(int targetIndex = 0)
     {
+        AutoSetupEnvironmentsIfNeeded();
         if (environments == null || environments.Count == 0) return;
 
-        // Environment 2 geçişi tamamen devre dışı bırakıldı; daima Environment 1 (Index 0) kullanılır
-        activeEnvironmentIndex = 0;
+        isInGameplayMode = true;
+        activeEnvironmentIndex = Mathf.Clamp(targetIndex, 0, environments.Count - 1);
 
         ApplyEnvironmentActiveStates();
         InitializeCurrentArena();
@@ -387,38 +655,50 @@ public class RingBoundary : MonoBehaviour
             RebuildPhysicalColliders();
         }
 
-        Debug.Log($"<color=cyan>[RingBoundary]</color> Aktif Saha: <color=yellow>{activeEnv.environmentName}</color> | Merkez: {activeEnv.center} | Yarıçap: {activeEnv.radius:F2}m");
+        Debug.Log($"<color=cyan>[RingBoundary]</color> Seçilen Arena Aktif ({activeEnvironmentIndex}): <color=yellow>{activeEnv.environmentName}</color> | Merkez: {activeEnv.center} | Seyirciler: AÇIK");
     }
 
     /// <summary>
-    /// Hierarchy'deki Environment GameObject'lerinin aktiflik durumlarını günceller (Environment 1 aktif, Environment 2 daima pasif)
+    /// Oyun sırasında seçilen Environment'ı ve onun altındaki Spectators nesnesini aktif eder.
     /// </summary>
     private void ApplyEnvironmentActiveStates()
     {
         if (environments == null) return;
 
-        for (int i = 0; i < environments.Count; i++)
+        if (textureArenaRoot != null && !textureArenaRoot.activeSelf)
         {
-            if (environments[i].environmentObject != null)
-            {
-                bool shouldBeActive = (i == 0);
-                if (environments[i].environmentObject.activeSelf != shouldBeActive)
-                {
-                    environments[i].environmentObject.SetActive(shouldBeActive);
-                }
-            }
+            textureArenaRoot.SetActive(true);
         }
 
-        // Sahnedeki olası Environment 2 objesini de tamamen pasif tut
-        foreach (var rootGo in UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects())
+        for (int i = 0; i < environments.Count; i++)
         {
-            string trimmed = rootGo.name.Trim();
-            if (trimmed.Equals("Environment 2", StringComparison.OrdinalIgnoreCase) || trimmed.Equals("Environment2", StringComparison.OrdinalIgnoreCase))
+            var env = environments[i];
+            if (env == null) continue;
+
+            bool isSelected = (i == activeEnvironmentIndex);
+
+            if (env.environmentObject != null)
             {
-                if (rootGo.activeSelf)
+                if (env.environmentObject.activeSelf != isSelected)
                 {
-                    rootGo.SetActive(false);
+                    env.environmentObject.SetActive(isSelected);
                 }
+            }
+
+            // Seçilen arenanın seyircilerini (Spectators) görünür yap, diğerlerini gizle!
+            if (env.spectatorsObject != null)
+            {
+                bool showSpectators = isInGameplayMode && isSelected;
+                if (env.spectatorsObject.activeSelf != showSpectators)
+                {
+                    env.spectatorsObject.SetActive(showSpectators);
+                }
+            }
+
+            // Oyun esnasında RenderTexture önizleme kameralarını kapatarak ekstra GPU performansı kazan
+            if (env.previewCamera != null)
+            {
+                env.previewCamera.enabled = !isInGameplayMode;
             }
         }
     }
@@ -461,7 +741,7 @@ public class RingBoundary : MonoBehaviour
             {
                 GameObject postColGo = new GameObject($"PostCollider_{i}");
                 postColGo.transform.SetParent(wallsContainer);
-                postColGo.transform.position = postPositions[i] + Vector3.up * 1.5f;
+                postColGo.transform.position = new Vector3(postPositions[i].x, activeEnv.groundY + 1.5f, postPositions[i].z);
 
                 CapsuleCollider cap = postColGo.AddComponent<CapsuleCollider>();
                 cap.radius = postRadius;
@@ -501,7 +781,10 @@ public class RingBoundary : MonoBehaviour
             for (int i = 0; i < segments; i++)
             {
                 float angle = i * angleStep * Mathf.Deg2Rad;
-                Vector3 posOnPerimeter = activeEnv.center + new Vector3(Mathf.Sin(angle) * activeEnv.radius, activeEnv.groundY + 1.5f, Mathf.Cos(angle) * activeEnv.radius);
+                Vector3 posOnPerimeter = new Vector3(
+                    activeEnv.center.x + Mathf.Sin(angle) * activeEnv.radius,
+                    activeEnv.groundY + 1.5f,
+                    activeEnv.center.z + Mathf.Cos(angle) * activeEnv.radius);
 
                 GameObject wall = new GameObject($"CircleWall_{i}");
                 wall.transform.SetParent(wallsContainer);
@@ -545,7 +828,7 @@ public class RingBoundary : MonoBehaviour
 
         float originalY = pos.y;
 
-        // --- DAİRESEL SAHA SINIRLANDIRMASI (Environment 2 - Köy Alanı) ---
+        // --- DAİRESEL SAHA SINIRLANDIRMASI (Ancient Chinese Arena & Viking Arena) ---
         if (config.arenaShape == ArenaShape.Circle)
         {
             Vector3 diff = pos - config.center;
@@ -568,7 +851,7 @@ public class RingBoundary : MonoBehaviour
             return pos;
         }
 
-        // --- OKTAGON KAFES SINIRLANDIRMASI (Environment 1 - Octagon Ring) ---
+        // --- OKTAGON KAFES SINIRLANDIRMASI (Box Arena) ---
         pos.y = config.center.y;
         int count = postPositions.Count;
         if (count < 3) return new Vector3(pos.x, originalY, pos.z);
@@ -669,7 +952,7 @@ public class RingBoundary : MonoBehaviour
         Vector3 enemyForward = Quaternion.Euler(0f, config.enemySpawnRotationY, 0f) * Vector3.forward;
         Gizmos.DrawRay(config.enemySpawnPosition + Vector3.up * 0.5f, enemyForward * 1.2f);
 
-        // 3. Dairesel Saha Çizimi (Environment 2)
+        // 3. Dairesel Saha Çizimi
         if (config.arenaShape == ArenaShape.Circle)
         {
             Gizmos.color = Color.cyan;
@@ -690,7 +973,7 @@ public class RingBoundary : MonoBehaviour
                 if (i % 4 == 0) Gizmos.DrawLine(p1, p1Top);
             }
         }
-        // 4. Oktagon Saha Çizimi (Environment 1)
+        // 4. Oktagon Saha Çizimi
         else if (postPositions != null && postPositions.Count >= 3)
         {
             Gizmos.color = Color.cyan;

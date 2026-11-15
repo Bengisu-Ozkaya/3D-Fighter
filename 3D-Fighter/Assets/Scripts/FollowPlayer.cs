@@ -112,26 +112,49 @@ public class FollowPlayer : MonoBehaviour
         if (isKnockoutView)
         {
             // --- OYUNCU YERDE NAKAVT HALİNDEYKEN (ÜSTTEN NAKAVT BAKIŞI) ---
+            if (playerHipsBone == null)
+            {
+                CachePlayerComponents();
+            }
+
             Vector3 centerPos = (autoCenterOnFallenBody && playerHipsBone != null)
                                 ? playerHipsBone.position
                                 : target.position;
 
+            // Inspector'da knockoutOffset.y yanlışlıkla 0 bırakılmışsa varsayılan 1.25m yüksekliği kullan
+            float heightAboveGround = knockoutOffset.y > 0.4f ? knockoutOffset.y : 1.25f;
+            float baseGroundY = (RingBoundary.Instance != null && RingBoundary.Instance.CurrentArenaConfig != null)
+                ? RingBoundary.Instance.CurrentArenaConfig.groundY
+                : target.position.y;
+
             Vector3 desiredKnockoutPos = new Vector3(
                 centerPos.x + knockoutOffset.x,
-                knockoutOffset.y,
+                baseGroundY + heightAboveGround,
                 centerPos.z + knockoutOffset.z
             );
 
-            transform.position = Vector3.SmoothDamp(transform.position, desiredKnockoutPos, ref currentVelocity, knockoutSmoothTime);
+            float effectiveSmoothTime = knockoutSmoothTime > 0.1f ? knockoutSmoothTime : 1.2f;
+            transform.position = Vector3.SmoothDamp(transform.position, desiredKnockoutPos, ref currentVelocity, effectiveSmoothTime);
 
             Quaternion desiredKnockoutRot = Quaternion.Euler(knockoutPitchAngle, 0f, knockoutYAngle);
-            transform.rotation = Quaternion.Slerp(transform.rotation, desiredKnockoutRot, Time.deltaTime * (2.8f / knockoutSmoothTime));
+            transform.rotation = Quaternion.Slerp(transform.rotation, desiredKnockoutRot, Time.deltaTime * (2.8f / effectiveSmoothTime));
+
+            // Yeniden doğuşta (Relive) kameranın yandan değil doğrudan oyuncunun arkasından (180°) başlaması için açıları hazır tut
+            yaw = 180f;
+            pitch = 15f;
             return;
         }
 
         // --- NORMAL OYUN / GTA TARZI KAMERA TAKİBİ ---
         
         Vector3 targetBasePos = target.position;
+
+        // Oyuncu Relive ile ayağa kalkarken (Kip Up) kamerayı doğrudan oyuncunun tam arkasına hizala
+        if (playerController != null && playerController.IsStandingUp)
+        {
+            yaw = target.eulerAngles.y;
+            pitch = 15f;
+        }
 
         if (stabilizeVerticalMovement)
         {
@@ -238,9 +261,29 @@ public class FollowPlayer : MonoBehaviour
 
             if (playerHipsBone == null)
             {
-                playerHipsBone = FindDeepChild(target, "Hips") ?? FindDeepChild(target, "mixamorig:Hips");
+                playerHipsBone = FindDeepChild(target, "Hips")
+                              ?? FindDeepChild(target, "mixamorig:Hips")
+                              ?? FindHipsBoneRecursive(target);
             }
         }
+    }
+
+    private Transform FindHipsBoneRecursive(Transform parent)
+    {
+        foreach (Transform child in parent)
+        {
+            if (child.name.EndsWith("Hips", System.StringComparison.OrdinalIgnoreCase) ||
+                child.name.IndexOf("Pelvis", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return child;
+            }
+            Transform result = FindHipsBoneRecursive(child);
+            if (result != null)
+            {
+                return result;
+            }
+        }
+        return null;
     }
 
     private Transform FindDeepChild(Transform parent, string boneName)
@@ -272,12 +315,32 @@ public class FollowPlayer : MonoBehaviour
             fixedGroundY = target.position.y;
             currentVelocity = Vector3.zero;
             yaw = target.eulerAngles.y;
+            pitch = 15f;
             
             Vector3 focusPoint = target.position + Vector3.up * heightOffset;
             focusPoint.y = fixedGroundY + heightOffset;
 
             transform.position = CalculateCameraPosition(focusPoint, yaw, pitch);
             transform.LookAt(focusPoint);
+        }
+    }
+
+    /// <summary>
+    /// Yeniden doğuşta (Relive) kameranın hedef açısını oyuncunun tam arkasına (sırtına) hizalar.
+    /// snapImmediately false ise üstten nakavt bakışından oyuncunun arkasına yumuşakça süzülür.
+    /// </summary>
+    public void AlignBehindTarget(bool snapImmediately = false)
+    {
+        FindTargetIfNeeded();
+        if (target == null) return;
+
+        yaw = target.eulerAngles.y;
+        pitch = 15f;
+        lastTargetPos = target.position;
+
+        if (snapImmediately)
+        {
+            SnapToTarget();
         }
     }
 }

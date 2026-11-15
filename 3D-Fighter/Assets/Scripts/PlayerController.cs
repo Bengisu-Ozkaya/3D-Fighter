@@ -5,6 +5,10 @@ using UnityEngine;
 
 public class PlayerController : MonoBehaviour
 {
+    [Header("ScriptableObject Veritabanı")]
+    [Tooltip("7 karakterin ortak dövüş, hareket ve Ulti ayarlarını tutan ScriptableObject")]
+    [SerializeField] private FighterCombatConfigSO combatConfig;
+
     [Header("Bileşen Referansları")]
     [SerializeField] Animator playerAnim;
     [SerializeField] EnemyController enemyController;
@@ -209,6 +213,49 @@ public class PlayerController : MonoBehaviour
     void Awake()
     {
         usingUlti = true; // Ulti oyun başında hazır değildir; oyun modu seçildikten sonra yüklenmeye başlar
+
+        if (combatConfig == null)
+        {
+            combatConfig = Resources.Load<FighterCombatConfigSO>("FighterCombatConfig");
+        }
+
+        if (combatConfig != null)
+        {
+            speed = combatConfig.playerSpeed;
+            rotationSpeed = combatConfig.playerRotationSpeed;
+            playerBodyRadius = combatConfig.playerBodyRadius;
+            punchRadius = combatConfig.punchRadius;
+            maxPunchRange = combatConfig.maxPunchRange;
+            punchStepDistance = combatConfig.punchStepDistance;
+            punchActiveDuration = combatConfig.punchActiveDuration;
+            punchDuration = combatConfig.punchDuration;
+            punchWindupTime = combatConfig.punchWindupTime;
+            uppercutWindupTime = combatConfig.uppercutWindupTime;
+            punchCooldown = combatConfig.punchCooldown;
+            ultiCooldown = combatConfig.ultiCooldown;
+            ultiRange = combatConfig.ultiRange;
+            if (combatConfig.handsPrefab != null) handsPrefab = combatConfig.handsPrefab;
+            ultiHandsCount = combatConfig.ultiHandsCount;
+            ultiHandsSpawnInterval = combatConfig.ultiHandsSpawnInterval;
+            ultiHandsSpawnY = combatConfig.ultiHandsSpawnY;
+            ultiHandsTargetY = combatConfig.ultiHandsTargetY;
+            ultiHandsSpeed = combatConfig.ultiHandsSpeed;
+            ultiHandsMinX = combatConfig.ultiHandsMinX;
+            ultiHandsMaxX = combatConfig.ultiHandsMaxX;
+            ultiHandsMinZ = combatConfig.ultiHandsMinZ;
+            ultiHandsMaxZ = combatConfig.ultiHandsMaxZ;
+            ultiHandsRotation = combatConfig.ultiHandsRotation;
+            if (combatConfig.ultiSoundClip != null) ultiSoundClip = combatConfig.ultiSoundClip;
+            ultiSoundVolume = combatConfig.ultiSoundVolume;
+            if (combatConfig.ultiPunchSoundClip != null) ultiPunchSoundClip = combatConfig.ultiPunchSoundClip;
+            ultiPunchSoundVolume = combatConfig.ultiPunchSoundVolume;
+            punchSoundDelay = combatConfig.punchSoundDelay;
+            enableUltiLightShow = combatConfig.enableUltiLightShow;
+            ultiLightSpeed = combatConfig.ultiLightSpeed;
+            ultiLightIntensityMultiplier = combatConfig.ultiLightIntensityMultiplier;
+            spawnUltiHeroLight = combatConfig.spawnUltiHeroLight;
+        }
+
         if (ultiLightIntensityMultiplier > 1.5f) ultiLightIntensityMultiplier = 1.2f;
         if (ultiLightSpeed > 3.5f) ultiLightSpeed = 2.0f;
 #if UNITY_EDITOR
@@ -228,6 +275,14 @@ public class PlayerController : MonoBehaviour
     }
     void Start()
     {
+        if (RingBoundary.Instance != null && RingBoundary.Instance.CurrentArenaConfig != null)
+        {
+            float arenaGroundY = RingBoundary.Instance.CurrentArenaConfig.groundY;
+            standingYPosition = arenaGroundY;
+            fallenYPosition = arenaGroundY;
+            standUpYPosition = arenaGroundY;
+        }
+
         startPosition = new Vector3(transform.position.x, standingYPosition, transform.position.z);
         transform.position = startPosition;
         startRotation = transform.rotation;
@@ -355,6 +410,7 @@ public class PlayerController : MonoBehaviour
             if (!isBlocking && !isPunching && !isHitStunned)
             {
                 isBlocking = true;
+                if (PlayerCombatTracker.Instance != null) { PlayerCombatTracker.Instance.RecordBlockState(true); }
                 currentMoveAnim = MoveAnim.None;
                 if (playerAnim != null)
                 {
@@ -378,6 +434,7 @@ public class PlayerController : MonoBehaviour
                 if (playerAnim != null)
                 {
                     playerAnim.SetBool("isBlocking", false);
+                    if (PlayerCombatTracker.Instance != null) { PlayerCombatTracker.Instance.RecordBlockState(false); }
                 }
                 if (blockingCoroutine != null)
                 {
@@ -700,6 +757,7 @@ public class PlayerController : MonoBehaviour
         // isPunchRight=true → Sol yumruk (Left Punch), isPunchRight=false → Sağ yumruk (Right Punch)
         string animName = isPunchRight ? "Left Punch" : "Right Punch";
         string triggerName = isPunchRight ? "PunchLeft" : "PunchRight";
+        if (PlayerCombatTracker.Instance != null) { PlayerCombatTracker.Instance.RecordAttackStart(CombatActionType.NormalPunch); }
 
         if (playerAnim != null)
         {
@@ -747,6 +805,7 @@ public class PlayerController : MonoBehaviour
         }
 
         if (uppercutRoutine != null) StopCoroutine(uppercutRoutine);
+        if (PlayerCombatTracker.Instance != null) { PlayerCombatTracker.Instance.RecordAttackStart(CombatActionType.Uppercut); }
         uppercutRoutine = StartCoroutine(UppercutRoutine());
     }
 
@@ -915,12 +974,21 @@ public class PlayerController : MonoBehaviour
             yield break;
         }
 
+        ArenaEnvironmentConfig activeArena = RingBoundary.Instance != null ? RingBoundary.Instance.CurrentArenaConfig : null;
+        Vector3 arenaCenter = activeArena != null ? activeArena.center : Vector3.zero;
+        float arenaGroundY = activeArena != null ? activeArena.groundY : standingYPosition;
+
+        float halfSpreadX = Mathf.Max(0.9f, Mathf.Abs(ultiHandsMaxX - ultiHandsMinX) * 0.5f);
+        float halfSpreadZ = Mathf.Max(1.2f, Mathf.Abs(ultiHandsMaxZ - ultiHandsMinZ) * 0.5f);
+
         for (int i = 0; i < ultiHandsCount; i++)
         {
-            // Kullanıcının belirttiği koordinatlar: X (-2.5f ile -0.33f), Z (1f ile 4f), Y sabit (0f zemin)
-            float randX = Random.Range(ultiHandsMinX, ultiHandsMaxX);
-            float randZ = Random.Range(ultiHandsMinZ, ultiHandsMaxZ);
-            Vector3 spawnPos = new Vector3(randX, ultiHandsSpawnY, randZ);
+            // Aktif Texture Arena ortamının merkezine ve zemin yüksekliğine göre elleri doğur
+            float randX = arenaCenter.x + Random.Range(-halfSpreadX, halfSpreadX);
+            float randZ = arenaCenter.z + Random.Range(-halfSpreadZ, halfSpreadZ);
+            float spawnY = arenaGroundY + ultiHandsSpawnY;
+            float targetY = arenaGroundY + ultiHandsTargetY;
+            Vector3 spawnPos = new Vector3(randX, spawnY, randZ);
 
             Quaternion spawnRot = Quaternion.Euler(ultiHandsRotation);
             GameObject handObj = Instantiate(handsPrefab, spawnPos, spawnRot);
@@ -932,9 +1000,9 @@ public class PlayerController : MonoBehaviour
             {
                 effect = handObj.AddComponent<UltiHandEffect>();
             }
-            effect.Initialize(spawnPos.y, ultiHandsTargetY, ultiHandsSpeed);
+            effect.Initialize(spawnPos.y, targetY, ultiHandsSpeed);
 
-            Debug.Log($"<color=magenta>[ULTİ HANDS]</color> El #{i + 1}/{ultiHandsCount} spawnlandı! Konum: {spawnPos}, Hedef Y: {ultiHandsTargetY}, Hız: {ultiHandsSpeed}");
+            Debug.Log($"<color=magenta>[ULTİ HANDS]</color> El #{i + 1}/{ultiHandsCount} spawnlandı! Konum: {spawnPos}, Hedef Y: {targetY}, Hız: {ultiHandsSpeed}");
 
             if (ultiHandsSpawnInterval > 0f)
             {
@@ -943,6 +1011,10 @@ public class PlayerController : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Ulti atıldığında mesafe veya bakış açısı fark etmeksizin ringdeki (sahnedeki)
+    /// tüm canlı düşmanlara aynı anda Ulti hasarı uygular.
+    /// </summary>
     bool CheckUltiContact()
     {
         bool hitAny = false;
@@ -950,21 +1022,12 @@ public class PlayerController : MonoBehaviour
 
         foreach (var enemy in allEnemies)
         {
-            if (enemy == null || enemy.IsDead) continue;
+            if (enemy == null || enemy.IsDead || enemy.IsPendingUltiDeath) continue;
 
-            float dist = Vector3.Distance(transform.position, enemy.transform.position);
-            if (dist <= ultiRange)
-            {
-                Vector3 dir = (enemy.transform.position - transform.position).normalized;
-                dir.y = 0f;
-                if (Vector3.Dot(transform.forward, dir) >= 0.1f)
-                {
-                    enemy.TakeDamage(ultiDamage, true, true); // isUppercut: true, isUlti: true
-                    Debug.Log($"<color=magenta>[ULTİ İSABET ETTİ!]</color> {enemy.name} düşmanına {ultiDamage} hasar verildi!");
-                    enemyController = enemy;
-                    hitAny = true;
-                }
-            }
+            enemy.TakeDamage(ultiDamage, true, true); // isUppercut: true, isUlti: true
+            Debug.Log($"<color=magenta>[ULTİ TÜM RİNGE İSABET ETTİ!]</color> {enemy.name} düşmanına {ultiDamage} Ulti hasarı verildi!");
+            enemyController = enemy;
+            hitAny = true;
         }
         return hitAny;
     }
@@ -1197,6 +1260,7 @@ public class PlayerController : MonoBehaviour
         }
 
         // 4. Kolun geri çekilmesi ve garda dönüş
+        if (!hasHitCurrentPunch && PlayerCombatTracker.Instance != null) { PlayerCombatTracker.Instance.RecordAttackWhiff(CombatActionType.Uppercut); }
         yield return new WaitForSeconds(0.35f);
 
         currentMoveAnim = MoveAnim.Idle;
@@ -1232,6 +1296,7 @@ public class PlayerController : MonoBehaviour
                     {
                         hasHitCurrentPunch = true;
                         hitEnemy.TakeDamage(uppercutDamage, true); // 20 Hasar ve Aparkat (Head Hit)!
+                        if (PlayerCombatTracker.Instance != null) { PlayerCombatTracker.Instance.RecordAttackHit(CombatActionType.Uppercut, hitEnemy); }
                         Debug.Log($"<color=green>[GÜÇLÜ APARKAT İSABET ETTİ!]</color> {hitEnemy.name} düşmanına {uppercutDamage} hasar verildi!");
                         enemyController = hitEnemy;
                         return;
@@ -1256,6 +1321,7 @@ public class PlayerController : MonoBehaviour
                 {
                     hasHitCurrentPunch = true;
                     closeEnemy.TakeDamage(uppercutDamage, true); // 20 Hasar ve Aparkat (Head Hit)!
+                    if (PlayerCombatTracker.Instance != null) { PlayerCombatTracker.Instance.RecordAttackHit(CombatActionType.Uppercut, closeEnemy); }
                     Debug.Log($"<color=green>[GÜÇLÜ APARKAT İSABET ETTİ!]</color> {closeEnemy.name} düşmanına {uppercutDamage} hasar verildi!");
                     enemyController = closeEnemy;
                 }
@@ -1511,6 +1577,7 @@ public class PlayerController : MonoBehaviour
         isPunchActive = false;
 
         // 3. Kolun geri çekilmesi ve boksörün garda dönüş süresi
+        if (!hasHitCurrentPunch && PlayerCombatTracker.Instance != null) { PlayerCombatTracker.Instance.RecordAttackWhiff(CombatActionType.NormalPunch); }
         float remainingDuration = punchDuration - (punchWindupTime + activeTimer);
         if (remainingDuration > 0f)
         {
@@ -1553,6 +1620,7 @@ public class PlayerController : MonoBehaviour
                         hasHitCurrentPunch = true;
                         isPunchActive = false;
                         hitEnemy.TakeDamage(punchDamage);
+                        if (PlayerCombatTracker.Instance != null) { PlayerCombatTracker.Instance.RecordAttackHit(CombatActionType.NormalPunch, hitEnemy); }
                         enemyController = hitEnemy; // Odaklanılan düşmanı son vurulan düşman yap
                         return;
                     }
@@ -1579,6 +1647,7 @@ public class PlayerController : MonoBehaviour
                         hasHitCurrentPunch = true;
                         isPunchActive = false;
                         targetEnemy.TakeDamage(punchDamage);
+                        if (PlayerCombatTracker.Instance != null) { PlayerCombatTracker.Instance.RecordAttackHit(CombatActionType.NormalPunch, targetEnemy); }
                         enemyController = targetEnemy;
                         Debug.Log($"<color=green>[YUMRUK İSABET ETTİ!]</color> {targetEnemy.name} düşmanına {punchDamage} hasar verildi (Mesafe: {distToEnemy:F1}m)!");
                     }
@@ -1889,12 +1958,13 @@ public class PlayerController : MonoBehaviour
     /// <summary>
     /// Environment değiştiğinde oyuncuyu yeni sahadaki spawn noktasına taşır ve zemin yüksekliğini ayarlar
     /// </summary>
-    public void TeleportToArena(Vector3 targetPos, Quaternion targetRot, float groundY = 0f)
+    public void TeleportToArena(Vector3 targetPos, Quaternion targetRot, float groundY = 0.1f)
     {
         standingYPosition = groundY;
-        fallenYPosition = groundY + -0.3f;
+        fallenYPosition = groundY;
         standUpYPosition = groundY;
 
+        targetPos.y = groundY;
         transform.position = targetPos;
         transform.rotation = targetRot;
 
@@ -1956,6 +2026,17 @@ public class PlayerController : MonoBehaviour
         Vector3 standPos = transform.position;
         standPos.y = standUpYPosition;
         transform.position = standPos;
+
+        // Kalkış başladığı anda yönünü 180 dereceye (rakibe doğru) çevir ki kamera tam arkasına geçsin
+        Vector3 standRot = transform.eulerAngles;
+        standRot.y = 180f;
+        transform.eulerAngles = standRot;
+
+        FollowPlayer camFollow = FindObjectOfType<FollowPlayer>();
+        if (camFollow != null)
+        {
+            camFollow.AlignBehindTarget(snapImmediately: false);
+        }
 
         // Canı tamamen yenile
         playerHealth = maxPlayerHealth;
@@ -2022,6 +2103,7 @@ public class PlayerController : MonoBehaviour
             if (enemy != null && !enemy.IsDead)
             {
                 enemy.SetPlayerDead(false);
+                if (PlayerCombatTracker.Instance != null) { PlayerCombatTracker.Instance.ResetTracker(); }
             }
         }
 

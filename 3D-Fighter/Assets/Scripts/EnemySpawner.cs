@@ -56,8 +56,20 @@ public class WaveStats
 
 public class EnemySpawner : MonoBehaviour
 {
+    [Header("ScriptableObject Veritabanları")]
+    [Tooltip("7 karakterin verisini tutan ScriptableObject. Seçilen oyuncu karakteri düşman havuzundan otomatik çıkarılır.")]
+    [SerializeField] private CharacterDatabaseSO characterDatabase;
+    [Tooltip("10 dalganın Kolay/Orta/Zor istatistiklerini ve ışık kademelerini tutan ScriptableObject.")]
+    [SerializeField] private GameBalanceSO gameBalanceConfig;
+
+    public GameBalanceSO BalanceConfig => gameBalanceConfig;
+
     [Header("Dalga ve Düşman Ayarları")]
     [SerializeField] private List<GameObject> enemyPrefab = new List<GameObject>();
+    private readonly List<GameObject> availableEnemyPrefabs = new List<GameObject>();
+    private int excludedCharacterIndex = -1;
+    private string excludedCharacterId = "";
+    private GameObject excludedEnemyPrefab = null;
     [Tooltip("Önceki dalgadaki tüm düşmanlar yok olduktan (Destroy edildikten) sonra yeni dalganın başlama gecikmesi (saniye)")]
     [SerializeField] float respawnDelay = 1.0f;
     [Tooltip("Birden fazla düşman doğduğunda aralarındaki yatay mesafe")]
@@ -209,8 +221,25 @@ public class EnemySpawner : MonoBehaviour
 
     void Awake()
     {
+        if (characterDatabase == null)
+        {
+            characterDatabase = Resources.Load<CharacterDatabaseSO>("CharacterDatabase");
+        }
+        if (gameBalanceConfig == null)
+        {
+            gameBalanceConfig = Resources.Load<GameBalanceSO>("GameBalanceConfig");
+        }
+        if (gameBalanceConfig != null)
+        {
+            gameBalanceConfig.EnsureInitialized();
+            respawnDelay = gameBalanceConfig.respawnDelay;
+            spawnSpacing = gameBalanceConfig.spawnSpacing;
+            maxEnemiesPerWave = gameBalanceConfig.maxEnemiesPerWave;
+            colorTransitionDuration = gameBalanceConfig.colorTransitionDuration;
+        }
         EnsureDefaultLightTiers();
         FindArenaPointLightsIfNeeded();
+        RebuildAvailableEnemyPool();
     }
 
     void Start()
@@ -296,6 +325,15 @@ public class EnemySpawner : MonoBehaviour
     /// </summary>
     public WaveStats GetWaveStatsForWave(int waveNumber)
     {
+        if (gameBalanceConfig == null)
+        {
+            gameBalanceConfig = Resources.Load<GameBalanceSO>("GameBalanceConfig");
+        }
+        if (gameBalanceConfig != null)
+        {
+            return gameBalanceConfig.GetWaveStats(currentDifficulty, waveNumber);
+        }
+
         int index = Mathf.Clamp(waveNumber - 1, 0, TOTAL_WAVES - 1);
         if (currentDifficulty == Difficulty.Easy)
         {
@@ -342,6 +380,15 @@ public class EnemySpawner : MonoBehaviour
     /// </summary>
     public int GetEnemyCountForWave(int waveNumber)
     {
+        if (gameBalanceConfig == null)
+        {
+            gameBalanceConfig = Resources.Load<GameBalanceSO>("GameBalanceConfig");
+        }
+        if (gameBalanceConfig != null)
+        {
+            return gameBalanceConfig.GetEnemyCountForWave(currentDifficulty, waveNumber);
+        }
+
         if (currentWaveCounts != null && waveNumber - 1 < currentWaveCounts.Length)
         {
             return currentWaveCounts[waveNumber - 1];
@@ -357,6 +404,23 @@ public class EnemySpawner : MonoBehaviour
     public void SetSpawnRotation(float rotY)
     {
         spawnRotationY = rotY;
+    }
+
+    public void SetSelectedEnvironment(int index)
+    {
+        currentEnvironmentIndex = Mathf.Clamp(index, 0, 2);
+        arenaPointLights.Clear();
+        SyncSpawnerTransformToActiveArena();
+    }
+
+    private void SyncSpawnerTransformToActiveArena()
+    {
+        if (RingBoundary.Instance != null && RingBoundary.Instance.CurrentArenaConfig != null)
+        {
+            var cfg = RingBoundary.Instance.CurrentArenaConfig;
+            transform.position = cfg.enemySpawnPosition;
+            spawnRotationY = cfg.enemySpawnRotationY;
+        }
     }
 
     public void StartEasyMode()
@@ -397,14 +461,24 @@ public class EnemySpawner : MonoBehaviour
         }
 
         wave = 1;
-        currentEnvironmentIndex = 0;
         isGameStarted = true;
         isChangingEnvironment = false;
 
-        // Başlangıçta 1. sahayı (Environment 1) aktif et
+        // Seçilen sahayı aktif et
         if (RingBoundary.Instance != null)
         {
-            RingBoundary.Instance.SwitchEnvironment(0);
+            RingBoundary.Instance.SwitchEnvironment(currentEnvironmentIndex);
+        }
+        SyncSpawnerTransformToActiveArena();
+        SyncSpawnerTransformToActiveArena();
+        arenaPointLights.Clear();
+        FindArenaPointLightsIfNeeded();
+
+        // Grup koordinatörünü zorluk moduna göre ayarla
+        if (EnemyGroupCoordinator.Instance != null)
+        {
+            EnemyGroupCoordinator.Instance.ResetCoordinator();
+            EnemyGroupCoordinator.Instance.ApplyDifficultySettings(difficulty);
         }
 
         // 1. Dalga arena ışık rengini (Beyaz) anında uygula
@@ -504,12 +578,19 @@ public class EnemySpawner : MonoBehaviour
         isSpawning = false;
         isChangingEnvironment = false;
 
-        // Environment 1 daima aktif
+        // Seçilen sahayı aktif tut
         if (RingBoundary.Instance != null)
         {
-            RingBoundary.Instance.SwitchEnvironment(0);
+            RingBoundary.Instance.SwitchEnvironment(currentEnvironmentIndex);
         }
-        currentEnvironmentIndex = 0;
+        SyncSpawnerTransformToActiveArena();
+        SyncSpawnerTransformToActiveArena();
+
+        if (EnemyGroupCoordinator.Instance != null)
+        {
+            EnemyGroupCoordinator.Instance.ResetCoordinator();
+            EnemyGroupCoordinator.Instance.ApplyDifficultySettings(currentDifficulty);
+        }
 
         // Öldüğü dalganın ışık rengini anında uygula
         UpdateArenaLighting(wave, immediate: true);
@@ -539,11 +620,17 @@ public class EnemySpawner : MonoBehaviour
         isSpawning = false;
         isChangingEnvironment = false;
         wave = 1;
-        currentEnvironmentIndex = 0;
 
         if (RingBoundary.Instance != null)
         {
-            RingBoundary.Instance.SwitchEnvironment(0);
+            RingBoundary.Instance.SwitchEnvironment(currentEnvironmentIndex);
+        }
+        SyncSpawnerTransformToActiveArena();
+
+        if (EnemyGroupCoordinator.Instance != null)
+        {
+            EnemyGroupCoordinator.Instance.ResetCoordinator();
+            EnemyGroupCoordinator.Instance.ApplyDifficultySettings(currentDifficulty);
         }
 
         // Başlangıç dalgası ışığını anında uygula (Beyaz)
@@ -578,7 +665,13 @@ public class EnemySpawner : MonoBehaviour
 
         if (RingBoundary.Instance != null)
         {
-            RingBoundary.Instance.SwitchEnvironment(0);
+            RingBoundary.Instance.PrepareForMenuPreview();
+        }
+
+        if (EnemyGroupCoordinator.Instance != null)
+        {
+            EnemyGroupCoordinator.Instance.ResetCoordinator();
+            EnemyGroupCoordinator.Instance.ApplyDifficultySettings(currentDifficulty);
         }
 
         // Işıkları başlangıç haline getir (Beyaz)
@@ -618,6 +711,7 @@ public class EnemySpawner : MonoBehaviour
     IEnumerator SpawnEnemyRoutine(int currentWave, bool isFirst = false)
     {
         isSpawning = true;
+        if (PlayerCombatTracker.Instance != null) { PlayerCombatTracker.Instance.ResetTracker(); }
 
         // 4. Dalga başında can 110'a, 8. Dalga başında can 120'ye dolar. Diğer dalgalarda mevcut can korunur.
         bool shouldRefillHealth = isFirst || currentWave == 4 || currentWave == 8;
@@ -674,41 +768,39 @@ public class EnemySpawner : MonoBehaviour
     }
 
     /// <summary>
-    /// Environment 1 altındaki Light objesinin altındaki Point Light'ları otomatik bulur
+    /// Aktif Texture Arena ortamının altındaki Light objesinde bulunan Point Light'ları otomatik bulur
     /// </summary>
     public void FindArenaPointLightsIfNeeded()
     {
         arenaPointLights.RemoveAll(l => l == null);
         if (arenaPointLights.Count > 0) return;
 
-        // 1. Sahnedeki "Environment 1" veya "Environment1" GameObject'ini ara
-        GameObject env1Go = null;
-        foreach (var rootGo in UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects())
+        Transform lightParent = null;
+
+        // 1. Öncelik: RingBoundary'deki aktif arena objesinin altındaki Light nesnesini ara
+        if (RingBoundary.Instance != null && RingBoundary.Instance.CurrentArenaConfig != null &&
+            RingBoundary.Instance.CurrentArenaConfig.environmentObject != null)
         {
-            string trimmed = rootGo.name.Trim();
-            if (trimmed.Equals("Environment 1", System.StringComparison.OrdinalIgnoreCase) ||
-                trimmed.Equals("Environment1", System.StringComparison.OrdinalIgnoreCase))
+            GameObject activeEnvGo = RingBoundary.Instance.CurrentArenaConfig.environmentObject;
+            lightParent = activeEnvGo.transform.Find("Light");
+            if (lightParent == null)
             {
-                env1Go = rootGo;
-                break;
+                foreach (var l in activeEnvGo.GetComponentsInChildren<Light>(true))
+                {
+                    if (l != null && l.type == LightType.Point)
+                    {
+                        arenaPointLights.Add(l);
+                    }
+                }
             }
         }
 
-        Transform lightParent = null;
-        if (env1Go != null)
+        if (lightParent != null && arenaPointLights.Count == 0)
         {
-            lightParent = env1Go.transform.Find("Light");
-        }
-
-        if (lightParent == null)
-        {
-            GameObject lGo = GameObject.Find("Light");
-            if (lGo != null) lightParent = lGo.transform;
-        }
-
-        if (lightParent != null)
-        {
-            // Sadece LightType.Point olanları al (Directional Light etkilenmez)
+            if (!lightParent.gameObject.activeSelf)
+            {
+                lightParent.gameObject.SetActive(true);
+            }
             Light[] found = lightParent.GetComponentsInChildren<Light>(true);
             foreach (var l in found)
             {
@@ -717,11 +809,11 @@ public class EnemySpawner : MonoBehaviour
                     arenaPointLights.Add(l);
                 }
             }
-            Debug.Log($"<color=cyan>[EnemySpawner]</color> Environment 1/Light altındaki {arenaPointLights.Count} adet Point Light sisteme bağlandı.");
         }
-        else
+
+        // 2. Fallback: Sahnedeki aktif Point Light'ları tara
+        if (arenaPointLights.Count == 0)
         {
-            // Fallback: Sahnede adı "Point Light" olan veya tipi Point olan ışıkları al
             foreach (var l in FindObjectsOfType<Light>(true))
             {
                 if (l != null && l.type == LightType.Point && l.name.IndexOf("Point Light", System.StringComparison.OrdinalIgnoreCase) >= 0)
@@ -749,6 +841,15 @@ public class EnemySpawner : MonoBehaviour
     /// </summary>
     public ArenaLightTier GetLightTierForWave(int waveNumber)
     {
+        if (gameBalanceConfig == null)
+        {
+            gameBalanceConfig = Resources.Load<GameBalanceSO>("GameBalanceConfig");
+        }
+        if (gameBalanceConfig != null)
+        {
+            return gameBalanceConfig.GetLightTierForWave(waveNumber);
+        }
+
         EnsureDefaultLightTiers();
         if (arenaLightTiers == null || arenaLightTiers.Count == 0)
         {
@@ -872,32 +973,145 @@ public class EnemySpawner : MonoBehaviour
         lightTransitionCoroutine = null;
     }
 
+    /// <summary>
+    /// Oyuncunun seçtiği karakteri kaydeder ve o karakteri düşman doğma havuzundan çıkarır.
+    /// Böylece seçilen karakter oyun esnasında oyuncunun karşısına rakip olarak çıkmaz.
+    /// </summary>
+    public void SetExcludedCharacter(CharacterDatabaseSO db, int selectedIndex, CharacterEntry selectedEntry)
+    {
+        if (db != null)
+        {
+            characterDatabase = db;
+        }
+        excludedCharacterIndex = selectedIndex;
+        excludedCharacterId = selectedEntry != null ? selectedEntry.characterId : "";
+        excludedEnemyPrefab = selectedEntry != null ? selectedEntry.enemyPrefab : null;
+        RebuildAvailableEnemyPool();
+    }
+
+    public void SetExcludedCharacterByName(string characterName)
+    {
+        if (characterDatabase == null)
+        {
+            characterDatabase = Resources.Load<CharacterDatabaseSO>("CharacterDatabase");
+        }
+
+        if (characterDatabase != null && characterDatabase.Count > 0)
+        {
+            int idx = characterDatabase.FindCharacterIndex(characterName);
+            CharacterEntry entry = idx >= 0 ? characterDatabase.GetCharacter(idx) : null;
+            SetExcludedCharacter(characterDatabase, idx, entry);
+        }
+        else
+        {
+            excludedCharacterIndex = -1;
+            excludedCharacterId = (characterName ?? "").Replace("-Player", "").Trim();
+            excludedEnemyPrefab = null;
+            RebuildAvailableEnemyPool();
+        }
+    }
+
+    private void RebuildAvailableEnemyPool()
+    {
+        availableEnemyPrefabs.Clear();
+
+        if (characterDatabase == null)
+        {
+            characterDatabase = Resources.Load<CharacterDatabaseSO>("CharacterDatabase");
+        }
+
+        // 1. Öncelik: CharacterDatabaseSO içindeki 7 karakterin enemyPrefab listesi (Seçilen karakter hariç)
+        if (characterDatabase != null && characterDatabase.Count > 0)
+        {
+            int safeExcludedIndex = excludedCharacterIndex >= 0 ? characterDatabase.WrapIndex(excludedCharacterIndex) : -1;
+            for (int i = 0; i < characterDatabase.Count; i++)
+            {
+                if (i == safeExcludedIndex) continue;
+
+                CharacterEntry entry = characterDatabase.GetCharacter(i);
+                if (entry == null || entry.enemyPrefab == null) continue;
+
+                if (excludedEnemyPrefab != null && entry.enemyPrefab == excludedEnemyPrefab) continue;
+                if (!string.IsNullOrEmpty(excludedCharacterId) &&
+                    !string.IsNullOrEmpty(entry.characterId) &&
+                    entry.characterId.Equals(excludedCharacterId, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (!availableEnemyPrefabs.Contains(entry.enemyPrefab))
+                {
+                    availableEnemyPrefabs.Add(entry.enemyPrefab);
+                }
+            }
+        }
+
+        // 2. Fallback: Eğer ScriptableObject henüz atanmamışsa mevcut enemyPrefab listesinden filtrele
+        if (availableEnemyPrefabs.Count == 0 && enemyPrefab != null)
+        {
+            foreach (var prefab in enemyPrefab)
+            {
+                if (prefab == null) continue;
+                if (excludedEnemyPrefab != null && prefab == excludedEnemyPrefab) continue;
+                if (!string.IsNullOrEmpty(excludedCharacterId) &&
+                    prefab.name.IndexOf(excludedCharacterId, System.StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    continue;
+                }
+                availableEnemyPrefabs.Add(prefab);
+            }
+        }
+    }
+
     void SpawnEnemy(int count)
     {
-        if (enemyPrefab != null)
+        if (availableEnemyPrefabs.Count == 0)
+        {
+            RebuildAvailableEnemyPool();
+        }
+
+        List<GameObject> pool = (availableEnemyPrefabs != null && availableEnemyPrefabs.Count > 0)
+            ? availableEnemyPrefabs
+            : enemyPrefab;
+
+        if (pool != null && pool.Count > 0)
         {
             PlayerController player = FindObjectOfType<PlayerController>();
             WaveStats waveStats = GetWaveStatsForWave(wave);
+
+            ArenaEnvironmentConfig activeEnv = RingBoundary.Instance != null ? RingBoundary.Instance.CurrentArenaConfig : null;
+            Vector3 baseSpawnPos = activeEnv != null ? activeEnv.enemySpawnPosition : transform.position;
+            float arenaGroundY = activeEnv != null ? activeEnv.groundY : 0.1f;
+            float rotY = activeEnv != null ? activeEnv.enemySpawnRotationY : spawnRotationY;
+
+            transform.position = baseSpawnPos;
+            spawnRotationY = rotY;
 
             for (int i = 0; i < count; i++)
             {
                 // Düşmanların üst üste binmemesi için X ekseninde aralıklı yerleştir
                 float xOffset = (count > 1) ? (i - (count - 1) * 0.5f) * spawnSpacing : 0f;
-                Vector3 spawnPos = transform.position + new Vector3(xOffset, 0f, 0f);
+                Vector3 spawnPos = new Vector3(baseSpawnPos.x + xOffset, arenaGroundY, baseSpawnPos.z);
                 spawnPos = RingBoundary.ClampToArena(spawnPos, 0.45f);
-                int randomIndex = Random.Range(0,enemyPrefab.Count);
+                spawnPos.y = arenaGroundY;
+                int randomIndex = Random.Range(0, pool.Count);
 
-                Quaternion spawnRot = Quaternion.Euler(0f, spawnRotationY, 0f);
-                GameObject newEnemy = Instantiate(enemyPrefab[randomIndex], spawnPos, spawnRot);
+                Quaternion spawnRot = Quaternion.Euler(0f, rotY, 0f);
+                GameObject newEnemy = Instantiate(pool[randomIndex], spawnPos, spawnRot);
                 EnemyController ec = newEnemy.GetComponent<EnemyController>();
                 if (ec != null)
                 {
                     ec.transform.rotation = spawnRot;
+                    ec.SetArenaGroundY(arenaGroundY);
                     ec.SetAttackDamage(waveStats.enemyPunchDamage);
                     ec.SetUppercutDamage(waveStats.enemyUppercutDamage);
                     ec.SetHealth(waveStats.enemyHealth);
                     ec.ApplyDifficultyBlockSettings(currentDifficulty);
                     activeEnemies.Add(ec);
+                    if (EnemyGroupCoordinator.Instance != null)
+                    {
+                        EnemyGroupCoordinator.Instance.RegisterEnemy(ec);
+                    }
                     if (player != null)
                     {
                         player.OnEnemySpawned(ec);

@@ -136,7 +136,7 @@ MonoBehaviour:
   health: 30
   maxHealth: 30
   knockbackDistance: 0
-  enemyAnimator: {fileID: 6884461742084159459, guid: 5a772418047da24ba4762083ab775be9, type: 3}
+  enemyAnimator: {fileID: 8015344184614927860}
   attackRange: 1.1
   maxHitDistance: 1.25
   attackCooldown: 1.8
@@ -153,3 +153,8 @@ MonoBehaviour:
   bodyRadius: 0.45
   separationRadius: 0.6
   separationStrength: 0.6
+--- !u!95 &8015344184614927860 stripped
+Animator:
+  m_CorrespondingSourceObject: {fileID: 5866666021909216657, guid: 3c5077f57a8303c4bbc2381c2e7311d1, type: 3}
+  m_PrefabInstance: {fileID: 4491967586362687589}
+  m_PrefabAsset: {fileID: 0}

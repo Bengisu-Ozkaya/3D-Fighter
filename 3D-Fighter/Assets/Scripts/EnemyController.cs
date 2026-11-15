@@ -4,6 +4,10 @@ using UnityEngine;
 
 public class EnemyController : MonoBehaviour
 {
+    [Header("ScriptableObject Veritabanları")]
+    [SerializeField] private FighterCombatConfigSO combatConfig;
+    [SerializeField] private GameBalanceSO gameBalanceConfig;
+
     [Header("Sağlık Ayarları")]
     [SerializeField] float health = 30f;
     [SerializeField] float maxHealth = 30f;
@@ -36,6 +40,17 @@ public class EnemyController : MonoBehaviour
     [SerializeField] float attackDamage = 10f;      // Player'a vereceği hasar
     [Tooltip("Düşmanın aparkat vuruşunun vereceği hasar")]
     [SerializeField] float uppercutDamage = 10f;    // Player'a vereceği aparkat hasarı
+    [Tooltip("Düşmanın aparkat atma olasılığı (0.25 = %25, Adaptif Yapay Zeka tarafından dinamik yönetilir)")]
+    [Range(0.05f, 0.95f)]
+    [SerializeField] float uppercutChance = 0.25f;
+
+    public float AttackRange { get => attackRange; set => attackRange = value; }
+    public float MoveSpeed { get => moveSpeed; set => moveSpeed = value; }
+    public float AttackCooldown { get => attackCooldown; set => attackCooldown = value; }
+    public int HitsToTriggerBlock { get => hitsToTriggerBlock; set => hitsToTriggerBlock = value; }
+    public float BlockChance { get => blockChance; set => blockChance = value; }
+    public float BlockDuration { get => blockDuration; set => blockDuration = value; }
+    public float UppercutChance { get => uppercutChance; set => uppercutChance = value; }
     private Transform playerTransform;
     private PlayerController playerController;
     private float nextAttackTime = 0f;
@@ -73,8 +88,37 @@ public class EnemyController : MonoBehaviour
     private float nextBlockAvailableTime = 0f;
     private Coroutine blockCoroutine = null;
 
+    void Awake()
+    {
+        if (combatConfig == null)
+        {
+            combatConfig = Resources.Load<FighterCombatConfigSO>("FighterCombatConfig");
+        }
+        if (gameBalanceConfig == null)
+        {
+            gameBalanceConfig = Resources.Load<GameBalanceSO>("GameBalanceConfig");
+        }
+
+        if (combatConfig != null)
+        {
+            moveSpeed = combatConfig.enemyMoveSpeed;
+            attackRange = combatConfig.enemyAttackRange;
+            maxHitDistance = combatConfig.enemyMaxHitDistance;
+            attackCooldown = combatConfig.enemyAttackCooldown;
+            bodyRadius = combatConfig.enemyBodyRadius;
+            separationRadius = combatConfig.enemySeparationRadius;
+            separationStrength = combatConfig.enemySeparationStrength;
+            comboResetThreshold = combatConfig.comboResetThreshold;
+        }
+    }
+
     void Start()
     {
+        if (RingBoundary.Instance != null && RingBoundary.Instance.CurrentArenaConfig != null)
+        {
+            SetArenaGroundY(RingBoundary.Instance.CurrentArenaConfig.groundY);
+        }
+
         // Aktif zorluk moduna ve dalgaya göre saldırı hasarını, aparkat hasarını ve canını belirle
         EnemySpawner spawner = FindObjectOfType<EnemySpawner>();
         if (spawner != null && spawner.IsGameStarted)
@@ -89,7 +133,14 @@ public class EnemyController : MonoBehaviour
         //Enemy
         if (maxHealth <= 0) maxHealth = 30f;
         if (health <= 0) health = maxHealth;
-        if (enemyAnimator == null) enemyAnimator = GetComponent<Animator>();
+        if (enemyAnimator == null || enemyAnimator.gameObject != gameObject)
+        {
+            enemyAnimator = GetComponent<Animator>();
+            if (enemyAnimator == null)
+            {
+                enemyAnimator = GetComponentInChildren<Animator>();
+            }
+        }
         if (enemyAnimator != null) enemyAnimator.applyRootMotion = false;
 
         // Kararlı yakın dövüş mesafesi ayarı
@@ -101,6 +152,26 @@ public class EnemyController : MonoBehaviour
         if (playerController != null)
         {
             playerTransform = playerController.transform;
+        }
+
+        // Çoklu düşman grup koordinatörüne bu düşmanı kaydet
+        if (EnemyGroupCoordinator.Instance != null)
+        {
+            EnemyGroupCoordinator.Instance.RegisterEnemy(this);
+        }
+
+        // Adaptif Dövüş Beyni (AdaptiveCombatBrain) kontrolü
+        if (GetComponent<AdaptiveCombatBrain>() == null)
+        {
+            gameObject.AddComponent<AdaptiveCombatBrain>();
+        }
+    }
+
+    void OnDestroy()
+    {
+        if (EnemyGroupCoordinator.Instance != null)
+        {
+            EnemyGroupCoordinator.Instance.UnregisterEnemy(this);
         }
     }
 
@@ -124,10 +195,22 @@ public class EnemyController : MonoBehaviour
 
     [Header("Pozisyon & Yükseklik (Y) Ayarları (Unity Inspector'dan Düzenlenebilir)")]
     [Tooltip("Normal ayaktayken ve yürürken Y pozisyonu")]
-    [SerializeField] float standingYPosition = 0f;
+    [SerializeField] float standingYPosition = 0.1f;
 
     [Tooltip("Düşman nakavt olup yere düştüğündeki Y pozisyonu")]
     [SerializeField] float fallenYPosition = 0.45f;
+
+    /// <summary>
+    /// Aktif Texture Arena ortamının zemin Y yüksekliğine göre düşmanın ayakta ve yerde yatma Y yüksekliğini kalibre eder
+    /// </summary>
+    public void SetArenaGroundY(float groundY)
+    {
+        standingYPosition = groundY;
+        fallenYPosition = groundY;
+        Vector3 pos = transform.position;
+        pos.y = isDead ? fallenYPosition : standingYPosition;
+        transform.position = pos;
+    }
 
     void LateUpdate()
     {
@@ -245,48 +328,122 @@ public class EnemyController : MonoBehaviour
         // 2. Diğer düşmanlardan kaçınma (Separation) vektörünü hesapla
         Vector3 separationForce = CalculateSeparationForce();
 
-        // 3. Eğer oyuncu saldırı mesafesinden uzaktaysa ona doğru yürü
-        if (distance > attackRange)
+        // 3. Çoklu düşman grup koordinatör kontrolü (Saldırı Token'ı)
+        bool isCoordinatorActive = EnemyGroupCoordinator.Instance != null && EnemyGroupCoordinator.Instance.HasMultipleEnemies();
+        bool shouldApproachToAttack = !isCoordinatorActive || EnemyGroupCoordinator.Instance.ShouldApproachToAttack(this);
+
+        if (shouldApproachToAttack)
         {
-            if (enemyAnimator != null)
+            // === SALDIRI HAKKINA SAHİP DÜŞMAN (Veya Tek Düşman) ===
+            // Oyuncuya yumruk mesafesine (attackRange = 1.1m) kadar yaklaşır ve vurur
+            if (distance > attackRange)
             {
-                enemyAnimator.SetBool("rightMove", true);
+                if (enemyAnimator != null)
+                {
+                    enemyAnimator.SetBool("rightMove", true);
+                }
+
+                if (moveSpeed > 0)
+                {
+                    Vector3 toPlayer = (playerTransform.position - transform.position).normalized;
+                    toPlayer.y = 0f;
+
+                    // Oyuncuya gidiş yönü ile diğer düşmanlardan kaçınma yönünü harmanla
+                    Vector3 combinedDir = (toPlayer + separationForce).normalized;
+                    Vector3 newPos = transform.position + combinedDir * moveSpeed * Time.deltaTime;
+                    newPos.y = standingYPosition;
+                    newPos = RingBoundary.ClampToArena(newPos, bodyRadius);
+                    transform.position = newPos;
+                }
             }
-
-            if (moveSpeed > 0)
+            else
             {
-                Vector3 toPlayer = (playerTransform.position - transform.position).normalized;
-                toPlayer.y = 0f;
+                if (enemyAnimator != null)
+                {
+                    enemyAnimator.SetBool("rightMove", false);
+                }
 
-                // Oyuncuya gidiş yönü ile diğer düşmanlardan kaçınma yönünü harmanla
-                Vector3 combinedDir = (toPlayer + separationForce).normalized;
-                Vector3 newPos = transform.position + combinedDir * moveSpeed * Time.deltaTime;
-                newPos.y = standingYPosition;
-                newPos = RingBoundary.ClampToArena(newPos, bodyRadius);
-                transform.position = newPos;
+                // Düşmanlar saldırı mesafesinde olsa bile üst üste binmesinler, hafifçe yana açılsınlar
+                if (separationForce.sqrMagnitude > 0.01f)
+                {
+                    Vector3 sidePush = separationForce * (moveSpeed * 0.7f) * Time.deltaTime;
+                    sidePush.y = 0f;
+                    Vector3 sidePos = RingBoundary.ClampToArena(transform.position + sidePush, bodyRadius);
+                    transform.position = sidePos;
+                }
+
+                if (Time.time >= nextAttackTime && !isAttacking && !isTakingHit && !isBlocking)
+                {
+                    if (!isCoordinatorActive || EnemyGroupCoordinator.Instance.CanInitiateAttack(this))
+                    {
+                        AttackPlayer();
+                    }
+                }
             }
         }
         else
         {
-            if (enemyAnimator != null)
-            {
-                enemyAnimator.SetBool("rightMove", false);
-            }
+            // === SIRASINI BEKLEYEN DÜŞMANLAR (Halka Formasyonu) ===
+            // Oyuncunun etrafında bekleme mesafesinde (2.05m) kalarak gard alır ve sırasını bekler
+            float ringDistance = EnemyGroupCoordinator.Instance != null ? EnemyGroupCoordinator.Instance.WaitingRingDistance : 2.05f;
 
-            // Düşmanlar saldırı mesafesinde olsa bile üst üste binmesinler, hafifçe yana açılsınlar
-            if (separationForce.sqrMagnitude > 0.01f)
+            if (distance > ringDistance + 0.15f)
             {
-                Vector3 sidePush = separationForce * (moveSpeed * 0.7f) * Time.deltaTime;
-                sidePush.y = 0f;
-                transform.position += sidePush;
-                Vector3 sidePos = transform.position + sidePush;
-                sidePos = RingBoundary.ClampToArena(sidePos, bodyRadius);
-                transform.position = sidePos;
-            }
+                // Halkaya doğru ilerle
+                if (enemyAnimator != null)
+                {
+                    enemyAnimator.SetBool("rightMove", true);
+                }
 
-            if (Time.time >= nextAttackTime && !isAttacking && !isTakingHit && !isBlocking)
+                if (moveSpeed > 0)
+                {
+                    Vector3 toPlayer = (playerTransform.position - transform.position).normalized;
+                    toPlayer.y = 0f;
+
+                    Vector3 combinedDir = (toPlayer + separationForce).normalized;
+                    Vector3 newPos = transform.position + combinedDir * (moveSpeed * 0.95f) * Time.deltaTime;
+                    newPos.y = standingYPosition;
+                    newPos = RingBoundary.ClampToArena(newPos, bodyRadius);
+                    transform.position = newPos;
+                }
+            }
+            else if (distance < ringDistance - 0.25f)
             {
-                AttackPlayer();
+                // Çok yaklaştıysa (örn. önceki saldırıdan kalma veya oyuncu üzerine yürüdüyse) geriye çekilip halkayı koru
+                if (enemyAnimator != null)
+                {
+                    enemyAnimator.SetBool("rightMove", false);
+                }
+
+                Vector3 awayFromPlayer = (transform.position - playerTransform.position).normalized;
+                awayFromPlayer.y = 0f;
+
+                Vector3 retreatDir = (awayFromPlayer + separationForce).normalized;
+                Vector3 newPos = transform.position + retreatDir * (moveSpeed * 0.7f) * Time.deltaTime;
+                newPos.y = standingYPosition;
+                newPos = RingBoundary.ClampToArena(newPos, bodyRadius);
+                transform.position = newPos;
+            }
+            else
+            {
+                // Tam halka mesafesinde: dur, gardını koru ve oyuncunun etrafında estetik hafif daire çiz
+                if (enemyAnimator != null)
+                {
+                    enemyAnimator.SetBool("rightMove", false);
+                }
+
+                Vector3 pacingForce = EnemyGroupCoordinator.Instance != null
+                    ? EnemyGroupCoordinator.Instance.CalculateCirclingForce(this, playerTransform.position)
+                    : Vector3.zero;
+
+                Vector3 combinedSide = separationForce + pacingForce;
+                if (combinedSide.sqrMagnitude > 0.001f)
+                {
+                    Vector3 sidePush = combinedSide * (moveSpeed * 0.6f) * Time.deltaTime;
+                    sidePush.y = 0f;
+                    Vector3 sidePos = RingBoundary.ClampToArena(transform.position + sidePush, bodyRadius);
+                    transform.position = sidePos;
+                }
             }
         }
 
@@ -365,6 +522,24 @@ public class EnemyController : MonoBehaviour
         transform.position = RingBoundary.ClampToArena(transform.position, bodyRadius);
     }
 
+    /// <summary>
+    /// Adaptif yapay zeka (AdaptiveCombatBrain) tarafından çağrılır:
+    /// Oyuncu boşa vurduğunda veya açığı yakalandığında bekleme süresini sıfırlayıp anında kontra saldırı başlatır.
+    /// </summary>
+    public bool TryTriggerCounterAttack()
+    {
+        if (isDead || isAttacking || isTakingHit || isBlocking || isPendingUltiDeath) return false;
+        if (playerTransform == null || playerController == null || playerController.IsDead) return false;
+
+        float dist = Vector3.Distance(transform.position, playerTransform.position);
+        if (dist <= maxHitDistance * 1.15f)
+        {
+            AttackPlayer();
+            return true;
+        }
+        return false;
+    }
+
     void AttackPlayer()
     {
         if (isDead || isTakingHit || isAttacking || isBlocking || isPendingUltiDeath) return;
@@ -385,11 +560,15 @@ public class EnemyController : MonoBehaviour
         }
 
         isAttacking = true;
+        if (EnemyGroupCoordinator.Instance != null)
+        {
+            EnemyGroupCoordinator.Instance.NotifyAttackStarted(this);
+        }
 
-        // Oyuncunun canını kontrol et: Can <= uppercutDamage ise veya dövüş dinamizmi için (%25 şans) aparkat yap
+        // Oyuncunun canını kontrol et: Can <= uppercutDamage ise veya dövüş dinamizmi için aparkat yap (Adaptif Zeka yönetir)
         float playerHealth = playerController != null ? playerController.GetHealth() : 100f;
         bool isFinisher = playerHealth <= uppercutDamage;
-        bool isUppercutAttack = isFinisher || (Random.value < 0.25f);
+        bool isUppercutAttack = isFinisher || (Random.value < uppercutChance);
 
         if (isUppercutAttack)
         {
@@ -468,10 +647,15 @@ public class EnemyController : MonoBehaviour
         isAttacking = false;
         currentAttackCoroutine = null;
         nextAttackTime = Time.time + attackCooldown;
+        if (EnemyGroupCoordinator.Instance != null)
+        {
+            EnemyGroupCoordinator.Instance.NotifyAttackFinished(this);
+        }
     }
 
     public void StopAttack()
     {
+        bool wasAttacking = isAttacking || currentAttackCoroutine != null;
         if (currentAttackCoroutine != null)
         {
             StopCoroutine(currentAttackCoroutine);
@@ -484,6 +668,11 @@ public class EnemyController : MonoBehaviour
             enemyAnimator.ResetTrigger("PunchLeft");
             enemyAnimator.ResetTrigger("PunchRight");
         }
+
+        if (wasAttacking && EnemyGroupCoordinator.Instance != null)
+        {
+            EnemyGroupCoordinator.Instance.NotifyAttackCancelled(this);
+        }
     }
 
     // Hasar alma fonksiyonu
@@ -493,6 +682,12 @@ public class EnemyController : MonoBehaviour
 
         // OYUNCU ÖNCE VURDUYSA: Düşmanın devam eden saldırısı ANINDA İPTAL EDİLİR!
         StopAttack();
+
+        // Grup koordinatörüne bildir (Diğer düşmanların saldırmasını engelleyip oyuncuya nefes payı verir)
+        if (EnemyGroupCoordinator.Instance != null)
+        {
+            EnemyGroupCoordinator.Instance.NotifyPlayerHitEnemy(this);
+        }
 
         // Önceki sersemleme coroutine'ini durdur
         if (hitStunCoroutine != null)
@@ -567,8 +762,8 @@ public class EnemyController : MonoBehaviour
         }
 
         // 3. ART ARDA 2 DARBE KONTROLÜ (Normal+Normal, Aparkat+Normal, Aparkat+Aparkat vb.)
-        // Eğer 2 darbeye ulaştıysa ve blok bekleme süresi dolduysa BLOK YAP!
-        if (!isBlocking && consecutiveHitsTaken >= hitsToTriggerBlock && Time.time >= nextBlockAvailableTime)
+        // Ulti darbesinde düşman gard alamaz, doğrudan Ulti sarsıntısına girer!
+        if (!fromUlti && !isBlocking && consecutiveHitsTaken >= hitsToTriggerBlock && Time.time >= nextBlockAvailableTime)
         {
             consecutiveHitsTaken = 0;
             StartBlocking();
@@ -577,11 +772,11 @@ public class EnemyController : MonoBehaviour
 
         // 4. DARBE ANİMASYONU VE SERSEMLEME (HIT STUN):
         // Düşman darbe aldığında saldırı yapamaz, hareket edemez ve animasyon net şekilde oynatılır
-        hitStunCoroutine = StartCoroutine(EnemyHitStunRoutine(isUppercut || isUlti || damageAmount >= 20f));
+        hitStunCoroutine = StartCoroutine(EnemyHitStunRoutine(isUppercut || fromUlti || damageAmount >= 20f, fromUlti));
         nextAttackTime = Mathf.Max(nextAttackTime, Time.time + attackCooldown * 0.8f);
     }
 
-    IEnumerator EnemyHitStunRoutine(bool isHeavy)
+    IEnumerator EnemyHitStunRoutine(bool isHeavy, bool isUltiHit = false)
     {
         isTakingHit = true;
         if (enemyAnimator != null)
@@ -602,8 +797,34 @@ public class EnemyController : MonoBehaviour
             }
         }
 
-        float stunDuration = isHeavy ? 0.60f : 0.42f;
-        yield return new WaitForSeconds(stunDuration);
+        if (isUltiHit)
+        {
+            if (playerController == null)
+            {
+                playerController = FindObjectOfType<PlayerController>();
+            }
+
+            float timeout = 4.0f;
+            float hitAnimTimer = 0.35f;
+            while (playerController != null && playerController.IsCastingUlti && timeout > 0f && !isDead)
+            {
+                hitAnimTimer -= Time.deltaTime;
+                timeout -= Time.deltaTime;
+                if (hitAnimTimer <= 0f && enemyAnimator != null)
+                {
+                    enemyAnimator.ResetTrigger("GetHeadHit");
+                    enemyAnimator.SetTrigger("GetHit");
+                    enemyAnimator.CrossFadeInFixedTime("Hit", 0.05f);
+                    hitAnimTimer = 0.35f;
+                }
+                yield return null;
+            }
+        }
+        else
+        {
+            float stunDuration = isHeavy ? 0.60f : 0.42f;
+            yield return new WaitForSeconds(stunDuration);
+        }
 
         isTakingHit = false;
         hitStunCoroutine = null;
@@ -725,10 +946,28 @@ public class EnemyController : MonoBehaviour
     }
 
     /// <summary>
-    /// Aktif zorluk seviyesine göre blok süresini kalibre eder (Tüm modlarda 2 darbede blok açılır)
+    /// Aktif zorluk seviyesine göre blok süresini kalibre eder (GameBalanceSO üzerinden)
     /// </summary>
     public void ApplyDifficultyBlockSettings(Difficulty diff)
     {
+        if (gameBalanceConfig == null)
+        {
+            gameBalanceConfig = Resources.Load<GameBalanceSO>("GameBalanceConfig");
+        }
+
+        if (gameBalanceConfig != null)
+        {
+            DifficultyWaveProfile profile = gameBalanceConfig.GetProfile(diff);
+            if (profile != null)
+            {
+                hitsToTriggerBlock = profile.hitsToTriggerBlock;
+                blockChance = profile.blockChance;
+                blockDuration = profile.blockDuration;
+                blockCooldown = profile.blockCooldown;
+                return;
+            }
+        }
+
         hitsToTriggerBlock = 2;
         blockChance = 1.0f;
         blockCooldown = 0.5f;
@@ -775,6 +1014,11 @@ public class EnemyController : MonoBehaviour
         if (isDead) return;
         isDead = true;
         isPendingUltiDeath = false;
+
+        if (EnemyGroupCoordinator.Instance != null)
+        {
+            EnemyGroupCoordinator.Instance.UnregisterEnemy(this);
+        }
 
         StopAttack();
         StopBlocking();
