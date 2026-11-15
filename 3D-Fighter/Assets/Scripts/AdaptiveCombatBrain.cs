@@ -2,10 +2,10 @@ using System.Collections;
 using UnityEngine;
 
 /// <summary>
-/// Düşman Adaptif Dövüş Beyni (Adaptive Combat Brain).
-/// PlayerCombatTracker'dan gelen canlı oyuncu stilini ve telemetriyi dinler;
-/// düşmanın saldırı, savunma, menzil ve kontra reflekslerini oyuncunun
-/// zaaflarına göre dinamik olarak şekillendirir.
+/// Düşman Adaptif Dövüş Beyni (Shared Adaptive Combat Brain).
+/// Tüm düşmanlar PlayerCombatTracker üzerindeki TEK ORTAK ve KALICI öğrenme havuzunu paylaşır.
+/// Hangi düşman doğarsa doğsun (Elvis, Ortiz, Grand Mom, Adem, Emine, Hüsnü, Kezban),
+/// hepsi oyuncunun öğrenilmiş alışkanlıklarına karşı birebir aynı ortak stratejiyi uygular.
 /// </summary>
 [RequireComponent(typeof(EnemyController))]
 public class AdaptiveCombatBrain : MonoBehaviour
@@ -17,17 +17,13 @@ public class AdaptiveCombatBrain : MonoBehaviour
     [Tooltip("Adaptif zeka aktif mi? Devre dışı bırakılırsa düşman standart davranışını sergiler.")]
     [SerializeField] private bool isAdaptiveAIEnabled = true;
 
-    [Tooltip("Oyuncu boşa vurduğunda (whiff) cezalandırıcı kontra atak yapma şansı")]
-    [Range(0f, 1f)]
-    [SerializeField] private float whiffPunishChance = 0.85f;
-
     [Tooltip("İnsan refleksi gecikmesi (saniye). 0 olursa robotik/hile gibi hissettirir, 0.15 - 0.22 insan hissi verir.")]
     [SerializeField] private float humanReactionDelay = 0.18f;
 
     [Tooltip("Whiff sonrası oyuncuya doğru ani hamle yapabileceği maksimum mesafe")]
     [SerializeField] private float whiffPunishMaxDistance = 2.2f;
 
-    // Düşmanın başlangıç temel değerleri
+    // Tüm düşmanlar için standartlaştırılmış temel değerler (Prefab farklarını ortadan kaldırır)
     private float baseAttackRange = 1.1f;
     private float baseMoveSpeed = 1.2f;
     private float baseAttackCooldown = 1.8f;
@@ -45,6 +41,7 @@ public class AdaptiveCombatBrain : MonoBehaviour
         {
             enemy = GetComponent<EnemyController>();
         }
+        RefreshCanonicalBaseStats();
     }
 
     void Start()
@@ -54,35 +51,91 @@ public class AdaptiveCombatBrain : MonoBehaviour
             enemy = GetComponent<EnemyController>();
         }
 
-        // Temel değerleri kaydet
-        if (enemy != null)
-        {
-            baseAttackRange = enemy.AttackRange;
-            baseMoveSpeed = enemy.MoveSpeed;
-            baseAttackCooldown = enemy.AttackCooldown;
-            baseHitsToTriggerBlock = enemy.HitsToTriggerBlock;
-            baseBlockChance = enemy.BlockChance;
-            baseBlockDuration = enemy.BlockDuration;
-            baseUppercutChance = enemy.UppercutChance;
-        }
-
-        // Oyuncunun güncel stilini hemen uygula
-        if (PlayerCombatTracker.Instance != null)
-        {
-            ApplyStyleAdaptation(PlayerCombatTracker.Instance.CurrentArchetype);
-        }
+        RefreshCanonicalBaseStats();
+        SyncWithSharedTracker();
     }
 
     void OnEnable()
     {
         PlayerCombatTracker.OnArchetypeChanged += HandleArchetypeChanged;
+        PlayerCombatTracker.OnProfileUpdated += HandleProfileUpdated;
         PlayerCombatTracker.OnPlayerWhiffed += HandlePlayerWhiffed;
     }
 
     void OnDisable()
     {
         PlayerCombatTracker.OnArchetypeChanged -= HandleArchetypeChanged;
+        PlayerCombatTracker.OnProfileUpdated -= HandleProfileUpdated;
         PlayerCombatTracker.OnPlayerWhiffed -= HandlePlayerWhiffed;
+    }
+
+    /// <summary>
+    /// Tüm düşmanların prefab farklılıklarından etkilenmemesi için temel değerleri
+    /// ortak FighterCombatConfigSO ve aktif zorluk profilinden (GameBalanceSO) alır.
+    /// </summary>
+    public void RefreshCanonicalBaseStats()
+    {
+        FighterCombatConfigSO combatConfig = Resources.Load<FighterCombatConfigSO>("FighterCombatConfig");
+        if (combatConfig != null)
+        {
+            baseMoveSpeed = combatConfig.enemyMoveSpeed;
+            baseAttackRange = combatConfig.enemyAttackRange;
+            baseAttackCooldown = combatConfig.enemyAttackCooldown;
+        }
+        else if (enemy != null)
+        {
+            baseMoveSpeed = 1.2f;
+            baseAttackRange = 1.1f;
+            baseAttackCooldown = 1.8f;
+        }
+
+        Difficulty diff = Difficulty.Easy;
+        EnemySpawner spawner = FindObjectOfType<EnemySpawner>();
+        if (spawner != null)
+        {
+            diff = spawner.CurrentDifficulty;
+        }
+
+        GameBalanceSO balanceConfig = Resources.Load<GameBalanceSO>("GameBalanceConfig");
+        if (balanceConfig != null)
+        {
+            DifficultyWaveProfile profile = balanceConfig.GetProfile(diff);
+            if (profile != null)
+            {
+                baseHitsToTriggerBlock = profile.hitsToTriggerBlock;
+                baseBlockChance = profile.blockChance;
+                baseBlockDuration = profile.blockDuration;
+                baseUppercutChance = 0.25f;
+                return;
+            }
+        }
+
+        baseHitsToTriggerBlock = 2;
+        baseBlockChance = 1.0f;
+        baseUppercutChance = 0.25f;
+        switch (diff)
+        {
+            case Difficulty.Easy:
+                baseBlockDuration = 1.0f;
+                break;
+            case Difficulty.Medium:
+                baseBlockDuration = 1.2f;
+                break;
+            case Difficulty.Hard:
+                baseBlockDuration = 1.4f;
+                break;
+        }
+    }
+
+    /// <summary>
+    /// EnemyController zorluk ayarlarını güncellediğinde çağrılır; ortak AI adaptasyonunu anında yeniden uygular.
+    /// </summary>
+    public void SyncWithSharedTracker()
+    {
+        if (PlayerCombatTracker.Instance != null)
+        {
+            ApplyStyleAdaptation(PlayerCombatTracker.Instance.CurrentArchetype);
+        }
     }
 
     private void HandleArchetypeChanged(PlayerCombatArchetype oldStyle, PlayerCombatArchetype newStyle)
@@ -91,8 +144,15 @@ public class AdaptiveCombatBrain : MonoBehaviour
         ApplyStyleAdaptation(newStyle);
     }
 
+    private void HandleProfileUpdated(PlayerCombatArchetype style)
+    {
+        if (!isAdaptiveAIEnabled || enemy == null || enemy.IsDead) return;
+        ApplyStyleAdaptation(style);
+    }
+
     /// <summary>
-    /// Oyuncunun tespit edilen yeni stiline göre düşmanın tüm dövüş parametrelerini yeniden kalibre eder
+    /// Oyuncunun ortak ve kalıcı öğrenme profiline göre tüm düşmanların dövüş parametrelerini
+    /// birebir aynı ortak kurallarla kalibre eder.
     /// </summary>
     public void ApplyStyleAdaptation(PlayerCombatArchetype style)
     {
@@ -100,105 +160,112 @@ public class AdaptiveCombatBrain : MonoBehaviour
 
         currentAppliedArchetype = style;
 
+        PlayerCombatTracker tracker = PlayerCombatTracker.Instance;
+        float learnedUpperRatio = tracker != null ? tracker.UppercutRatio : 0.25f;
+        float learnedBlockRatio = tracker != null ? tracker.BlockRatio : 0.10f;
+        float confidence = tracker != null ? tracker.ConfidenceScore : 0f;
+
         switch (style)
         {
             // 1. OYUNCU APARKAT SPAMLİYOR:
-            // Aparkatın hasarı yüksek ama toparlanması yavaş.
-            // Düşman gardını hemen kaldırır, darbe eşiğini 1'e düşürür ve aparkat sonrası kontra için hazır bekler.
+            // Tüm düşmanlar darbe eşiğini 1'e düşürür, gardını uzun tutar ve aparkat sonrası hızlı kontra yapar.
             case PlayerCombatArchetype.UppercutSpammer:
                 enemy.HitsToTriggerBlock = 1;
-                enemy.BlockChance = 0.95f;
+                enemy.BlockChance = 1.0f;
                 enemy.BlockDuration = baseBlockDuration * 1.3f;
                 enemy.AttackCooldown = baseAttackCooldown * 0.85f;
-                enemy.UppercutChance = 0.20f;
+                enemy.UppercutChance = 0.30f;
                 enemy.MoveSpeed = baseMoveSpeed;
                 enemy.AttackRange = baseAttackRange;
-                Debug.Log($"<color=cyan>[ADAPTİF ZEKA]</color> {gameObject.name} <color=yellow>APARKAT SPAM'e</color> karşı gardını güçlendirdi (1 Darbede Blok, Hızlı Kontra Hazır)!");
                 break;
 
             // 2. OYUNCU DÜZ YUMRUK SPAMLİYOR:
-            // Oyuncu aralıksız sol/sağ basıyor. Düşman gard alıp oyuncunun kombo akışını sert bir Aparkat ile böler.
+            // Tüm düşmanlar gard alıp oyuncunun kombo akışını yüksek olasılıklı Aparkat ile böler.
             case PlayerCombatArchetype.PunchSpammer:
-                enemy.HitsToTriggerBlock = 2;
-                enemy.BlockChance = 0.90f;
+                enemy.HitsToTriggerBlock = 1;
+                enemy.BlockChance = 0.95f;
                 enemy.BlockDuration = baseBlockDuration;
-                enemy.UppercutChance = 0.55f; // Kombo kesici ağır darbe
+                enemy.UppercutChance = 0.55f;
                 enemy.AttackCooldown = baseAttackCooldown * 0.80f;
                 enemy.MoveSpeed = baseMoveSpeed;
                 enemy.AttackRange = baseAttackRange;
-                Debug.Log($"<color=cyan>[ADAPTİF ZEKA]</color> {gameObject.name} <color=yellow>YUMRUK SPAM'e</color> karşı aparkat şansını artırdı (%55)! Seriyi bozacak.");
                 break;
 
             // 3. OYUNCU BOŞA SALLIYOR (WHIFF PRONE):
-            // Düşman oyuncunun menzilinin hemen kıyısında (tuzak mesafesi) bekler, oyuncu ıskaladığı an içeri dalar.
+            // Tüm düşmanlar tuzak mesafesinde bekler ve oyuncu ıskaladığı an hızla içeri girer.
             case PlayerCombatArchetype.WhiffProne:
-                enemy.AttackRange = 1.30f; // Hafif açıkta durup ıskalatma tuzağı
+                enemy.AttackRange = 1.25f;
                 enemy.MoveSpeed = baseMoveSpeed * 1.15f;
-                enemy.AttackCooldown = baseAttackCooldown * 0.90f;
+                enemy.AttackCooldown = baseAttackCooldown * 0.88f;
                 enemy.BlockChance = baseBlockChance;
                 enemy.HitsToTriggerBlock = baseHitsToTriggerBlock;
-                enemy.UppercutChance = baseUppercutChance;
-                Debug.Log($"<color=cyan>[ADAPTİF ZEKA]</color> {gameObject.name} oyuncunun <color=yellow>ISKA EĞİLİMİNİ</color> sezdi. Tuzak mesafesine geçti (1.30m)!");
+                enemy.UppercutChance = Mathf.Clamp(baseUppercutChance + learnedUpperRatio * 0.25f, 0.25f, 0.55f);
                 break;
 
             // 4. OYUNCU SÜREKLİ BLOKTA BEKLİYOR (TURTLE):
-            // Düşman gard kırmak için aparkat şansını tavan yapar (Aparkat gardı kırar).
+            // Tüm düşmanlar gard kırmak için aparkat oranını yükseltir ve baskıyı artırır.
             case PlayerCombatArchetype.TurtleDefensive:
-                enemy.UppercutChance = 0.70f; // Gard kırma (Guard Break) için yüksek aparkat
-                enemy.AttackCooldown = baseAttackCooldown * 0.75f; // Kesintisiz baskı
-                enemy.MoveSpeed = baseMoveSpeed * 1.10f;
+                enemy.UppercutChance = 0.70f;
+                enemy.AttackCooldown = baseAttackCooldown * 0.75f;
+                enemy.MoveSpeed = baseMoveSpeed * 1.12f;
                 enemy.HitsToTriggerBlock = baseHitsToTriggerBlock;
+                enemy.BlockChance = baseBlockChance;
                 enemy.AttackRange = baseAttackRange;
-                Debug.Log($"<color=cyan>[ADAPTİF ZEKA]</color> {gameObject.name} oyuncunun <color=yellow>GARDA YATTIĞINI</color> gördü. Gard kırmak için Aparkat moduna geçti (%70)!");
                 break;
 
             // 5. OYUNCU SÜREKLİ GERİ KAÇIYOR (OUTBOXER / FLEEING):
-            // Düşman daha hızlı yaklaşır, ringi keser ve oyuncuyu köşeye sıkıştırır.
+            // Tüm düşmanlar hızlanarak mesafeyi kapatır.
             case PlayerCombatArchetype.OutboxerFleeing:
-                enemy.MoveSpeed = baseMoveSpeed * 1.30f; // Kaçanı yakalamak için hız artışı
+                enemy.MoveSpeed = baseMoveSpeed * 1.30f;
                 enemy.AttackCooldown = baseAttackCooldown * 0.85f;
                 enemy.AttackRange = baseAttackRange;
                 enemy.HitsToTriggerBlock = baseHitsToTriggerBlock;
+                enemy.BlockChance = baseBlockChance;
                 enemy.UppercutChance = baseUppercutChance;
-                Debug.Log($"<color=cyan>[ADAPTİF ZEKA]</color> {gameObject.name} <color=yellow>KAÇAK DÖVÜŞEN</color> oyuncunun üzerine hızla hücum ediyor (Hız: {enemy.MoveSpeed:F1})!");
                 break;
 
             // 6. OYUNCU SÜREKLİ BURNUNA GİRİYOR (BRAWLER / AGGRESSIVE):
-            // Düşman yakın temasta darbeyi hemen emer, gard alır ve sert karşılık verir.
+            // Tüm düşmanlar ilk darbede gard alır ve sert karşılık verir.
             case PlayerCombatArchetype.BrawlerAggressive:
                 enemy.HitsToTriggerBlock = 1;
-                enemy.BlockChance = 0.85f;
-                enemy.UppercutChance = 0.40f;
+                enemy.BlockChance = 0.95f;
+                enemy.UppercutChance = 0.45f;
                 enemy.AttackCooldown = baseAttackCooldown * 0.80f;
-                enemy.MoveSpeed = baseMoveSpeed * 0.95f;
-                Debug.Log($"<color=cyan>[ADAPTİF ZEKA]</color> {gameObject.name} <color=yellow>AGRESİF OYUNCUYA</color> karşı yakın dövüş savunmasını sıkılaştırdı!");
+                enemy.MoveSpeed = baseMoveSpeed;
+                enemy.AttackRange = baseAttackRange;
                 break;
 
-            // DENGELİ / VARSAYILAN:
+            // DENGELİ / VARSAYILAN (Yine de kalıcı öğrenilmiş oranlarla ortak ince ayar yapar):
             case PlayerCombatArchetype.Balanced:
             default:
                 enemy.AttackRange = baseAttackRange;
                 enemy.MoveSpeed = baseMoveSpeed;
-                enemy.AttackCooldown = baseAttackCooldown;
-                enemy.HitsToTriggerBlock = baseHitsToTriggerBlock;
+                enemy.AttackCooldown = Mathf.Lerp(baseAttackCooldown, baseAttackCooldown * 0.88f, confidence * 0.5f);
+                enemy.HitsToTriggerBlock = (confidence >= 0.6f && learnedUpperRatio >= 0.45f) ? 1 : baseHitsToTriggerBlock;
                 enemy.BlockChance = baseBlockChance;
                 enemy.BlockDuration = baseBlockDuration;
-                enemy.UppercutChance = baseUppercutChance;
+                enemy.UppercutChance = Mathf.Clamp(baseUppercutChance + (learnedBlockRatio * 0.35f), 0.25f, 0.65f);
                 break;
         }
     }
 
     /// <summary>
     /// Oyuncu boşa yumruk salladığında (Whiff) tetiklenir:
-    /// Düşman insani bir refleks süresi bekleyip, oyuncunun gard toparlanma açığından faydalanarak içeri dalar.
+    /// Bireysel rastgele zar atmak yerine ortak koordinasyonla en yakın/aktif düşman cezalandırma yapar.
     /// </summary>
     private void HandlePlayerWhiffed(CombatActionType actionType, Vector3 playerPos)
     {
         if (!isAdaptiveAIEnabled || enemy == null || enemy.IsDead) return;
         if (enemy.IsBlocking || enemy.IsTakingHit || enemy.IsAttacking || enemy.IsPendingUltiDeath) return;
 
-        // Kontra şansı kontrolü
-        if (Random.value > whiffPunishChance) return;
+        // Çoklu düşman varsa yalnızca saldırı hakkına sahip olan (veya en yakın) düşman kontra yapsın ki hepsi aynı kararlılıkla davransın
+        if (EnemyGroupCoordinator.Instance != null && EnemyGroupCoordinator.Instance.HasMultipleEnemies())
+        {
+            if (!EnemyGroupCoordinator.Instance.ShouldApproachToAttack(enemy))
+            {
+                return;
+            }
+        }
 
         float distance = Vector3.Distance(transform.position, playerPos);
         if (distance > whiffPunishMaxDistance) return;
@@ -212,7 +279,6 @@ public class AdaptiveCombatBrain : MonoBehaviour
 
     private IEnumerator WhiffPunishRoutine(CombatActionType whiffedAction)
     {
-        // 1. İnsani reaksiyon payı (İçeri hile hissi vermemek için)
         yield return new WaitForSeconds(humanReactionDelay);
 
         if (enemy == null || enemy.IsDead || enemy.IsTakingHit || enemy.IsBlocking || enemy.IsAttacking)
@@ -220,24 +286,17 @@ public class AdaptiveCombatBrain : MonoBehaviour
             yield break;
         }
 
-        // Oyuncu özellikle toparlanması uzun olan Aparkat'ı boşa salladıysa cezalandırma çok daha etkilidir
-        bool isHighValuePunish = (whiffedAction == CombatActionType.Uppercut);
-
-        Debug.Log($"<color=yellow>[AI CEZALANDIRMA / WHIFF PUNISH]</color> {gameObject.name} oyuncunun boşa salladığı <b>{whiffedAction}</b> açığını yakaladı! Kontra saldırı başlatılıyor!");
-
         bool executed = enemy.TryTriggerCounterAttack();
         if (!executed)
         {
-            // Eğer mesafesi azıcık uzaktaysa hızlıca yaklaşmayı dener
             enemy.MoveSpeed = baseMoveSpeed * 1.35f;
         }
 
         yield return new WaitForSeconds(0.4f);
 
-        // Hızı normale döndür
         if (enemy != null && !enemy.IsDead)
         {
-            enemy.MoveSpeed = (currentAppliedArchetype == PlayerCombatArchetype.OutboxerFleeing) ? baseMoveSpeed * 1.30f : baseMoveSpeed;
+            SyncWithSharedTracker();
         }
 
         counterAttackRoutine = null;

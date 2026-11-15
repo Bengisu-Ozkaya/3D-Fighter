@@ -26,6 +26,45 @@ public class UIManager : MonoBehaviour
     private string selectedCharacterName = "";
     private int selectedArenaIndex = 0;
 
+    [Header("Düşman Kafa Üstü Can Barı (Enemy Health Bar)")]
+    [Tooltip("Canvas altındaki 'Enemy Health Bar' nesnesi (Boş bırakılırsa otomatik bulunur)")]
+    [SerializeField] private GameObject enemyHealthBarPanel;
+    [Tooltip("Enemy Health Bar içindeki azalan yeşil bar (Health Bar Green)")]
+    [SerializeField] private Image enemyHealthBarFill;
+    [Tooltip("Enemy Health Bar içinde (varsa) sayısal can yazısı")]
+    [SerializeField] private TMP_Text enemyHealthText;
+    [Tooltip("Oyuncu düşmana vurduktan sonra barın ekranda kalma süresi (saniye)")]
+    [SerializeField] private float enemyHealthBarVisibleDuration = 2.5f;
+    [Tooltip("Düşmanın kafa kemiğinin (Head) ne kadar üzerinde görüneceği (metre)")]
+    [SerializeField] private float enemyHeadHeightOffset = 0.42f;
+    [Tooltip("Kafa kemiği bulunamazsa düşman tabanından yüksekliği (metre)")]
+    [SerializeField] private float enemyFallbackHeightOffset = 2.05f;
+
+    private EnemyController trackedEnemy;
+    private Transform trackedEnemyHeadBone;
+    private float enemyHealthBarHideTime = 0f;
+    private Canvas rootCanvas;
+    private RectTransform canvasRectTransform;
+    private bool enemyHealthBarNormalized = false;
+
+    [Header("Geri Sayım (Count Down Panel)")]
+    [Tooltip("Canvas altındaki 'Count Down Panel' nesnesi (Boş bırakılırsa otomatik bulunur)")]
+    [SerializeField] private GameObject countDownPanel;
+    [Tooltip("Geri sayım metni (3, 2, 1 -> Font Size 300 | BAŞLA! -> Font Size 90)")]
+    [SerializeField] private TMP_Text countDownText;
+    [SerializeField] private Text legacyCountDownText;
+    private Coroutine countDownCoroutine;
+    public static bool IsCountingDown { get; private set; } = false;
+
+    [Header("Dalga Sayacı (Wave Counter Panel)")]
+    [Tooltip("Canvas altındaki 'Wave Counter Panel' nesnesi (Boş bırakılırsa otomatik bulunur)")]
+    [SerializeField] private GameObject waveCounterPanel;
+    [Tooltip("Mevcut dalgayı gösteren yazı bileşeni")]
+    [SerializeField] private TMP_Text waveCounterText;
+    [SerializeField] private Text legacyWaveCounterText;
+    private int lastDisplayedWave = -1;
+    private string waveCounterFormatTemplate = "";
+
     [Header("Karakter Seçimi (ScriptableObject & Carousel)")]
     [Tooltip("7 karakterin verisini tutan ScriptableObject (Boş bırakılırsa Resources/CharacterDatabase otomatik yüklenir)")]
     [SerializeField] private CharacterDatabaseSO characterDatabase;
@@ -135,11 +174,16 @@ public class UIManager : MonoBehaviour
         }
 
         BindArenaButtons();
+
+        FindAndSetupEnemyHealthBar();
+        FindCountDownPanel();
+        FindWaveCounterPanel();
     }
 
     void Start()
     {
         Time.timeScale = 1f;
+        IsCountingDown = false;
 
         // Mobil Control paneli şeffaf arka planının Pause Button veya diğer UI butonlarının tıklanmasını engellemesini önle
         if (mobileControlPanel != null)
@@ -159,6 +203,9 @@ public class UIManager : MonoBehaviour
         if (pausePanel != null) pausePanel.SetActive(false);
         if (pauseButton != null) pauseButton.SetActive(false);
         if (healtBarPanel != null) healtBarPanel.SetActive(false);
+        if (enemyHealthBarPanel != null) enemyHealthBarPanel.SetActive(false);
+        if (countDownPanel != null) countDownPanel.SetActive(false);
+        if (waveCounterPanel != null) waveCounterPanel.SetActive(false);
         if (mobileControlPanel != null)
         {
             mobileControlPanel.SetActive(startPanel == null || !startPanel.activeSelf);
@@ -198,6 +245,9 @@ public class UIManager : MonoBehaviour
             }
         }
 
+        // Mevcut dalga sayısını Wave Counter Panel'de güncel tut
+        UpdateWaveCounterUI();
+
         // Klavye kısayolu (ESC veya P) ile oyunu duraklat / devam ettir
         if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.P))
         {
@@ -214,6 +264,11 @@ public class UIManager : MonoBehaviour
                 PauseGame();
             }
         }
+    }
+
+    void LateUpdate()
+    {
+        UpdateEnemyHealthBarTracking();
     }
 
     void FindCharacterPanel()
@@ -891,11 +946,14 @@ public class UIManager : MonoBehaviour
     public void ShowVictoryPanel()
     {
         Time.timeScale = 1f;
+        StopMatchCountdown();
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
         if (pausePanel != null) pausePanel.SetActive(false);
         if (pauseButton != null) pauseButton.SetActive(false);
         if (mobileControlPanel != null) mobileControlPanel.SetActive(false);
         if (healtBarPanel != null) healtBarPanel.SetActive(false);
+        if (enemyHealthBarPanel != null) enemyHealthBarPanel.SetActive(false);
+        if (waveCounterPanel != null) waveCounterPanel.SetActive(false);
         if (victoryPanel != null)
         {
             victoryPanel.SetActive(true);
@@ -908,6 +966,7 @@ public class UIManager : MonoBehaviour
     public void ShowGameOverPanel(int deadWave = -1)
     {
         Time.timeScale = 1f;
+        StopMatchCountdown();
         if (deadWave <= 0 && enemySpawner != null)
         {
             deadWave = enemySpawner.CurrentWave;
@@ -930,6 +989,8 @@ public class UIManager : MonoBehaviour
         if (pausePanel != null) pausePanel.SetActive(false);
         if (pauseButton != null) pauseButton.SetActive(false);
         if (mobileControlPanel != null) mobileControlPanel.SetActive(false);
+        if (enemyHealthBarPanel != null) enemyHealthBarPanel.SetActive(false);
+        if (waveCounterPanel != null) waveCounterPanel.SetActive(false);
     }
 
     public void ShowGameOverPanel() => ShowGameOverPanel(-1);
@@ -954,6 +1015,9 @@ public class UIManager : MonoBehaviour
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
         if (pausePanel != null) pausePanel.SetActive(false);
         if (healtBarPanel != null) healtBarPanel.SetActive(true);   // ← Health bar göster
+        if (enemyHealthBarPanel != null) enemyHealthBarPanel.SetActive(false);
+        if (waveCounterPanel == null) FindWaveCounterPanel();
+        if (waveCounterPanel != null) waveCounterPanel.SetActive(true);
         if (mobileControlPanel != null) mobileControlPanel.SetActive(true);
         ShowPauseButton();
 
@@ -964,6 +1028,8 @@ public class UIManager : MonoBehaviour
             enemySpawner.RestartCurrentWave();
         }
 
+        UpdateWaveCounterUI(force: true);
+
         // 2. Oyuncuyu Kip Up animasyonu ile ayağa kaldır
         if (playerController == null) playerController = FindObjectOfType<PlayerController>();
         if (playerController != null)
@@ -971,6 +1037,8 @@ public class UIManager : MonoBehaviour
             playerController.RelivePlayer();
             playerController.StartUltiCooldown();
         }
+
+        TriggerMatchCountdown();
     }
 
     public void OnReliveButtonClicked() => Relive();
@@ -991,6 +1059,9 @@ public class UIManager : MonoBehaviour
         if (characterPanel != null) characterPanel.SetActive(false);
         if (arenaPanel != null) arenaPanel.SetActive(false);
         if (healtBarPanel != null) healtBarPanel.SetActive(true);   // ← Health bar göster
+        if (enemyHealthBarPanel != null) enemyHealthBarPanel.SetActive(false);
+        if (waveCounterPanel == null) FindWaveCounterPanel();
+        if (waveCounterPanel != null) waveCounterPanel.SetActive(true);
         if (mobileControlPanel != null) mobileControlPanel.SetActive(true);
         ShowPauseButton();
 
@@ -1014,6 +1085,9 @@ public class UIManager : MonoBehaviour
         {
             enemySpawner.RestartGame();
         }
+
+        UpdateWaveCounterUI(force: true);
+        TriggerMatchCountdown();
     }
 
     /// <summary>
@@ -1022,11 +1096,14 @@ public class UIManager : MonoBehaviour
     public void ReturnToMainMenu()
     {
         Time.timeScale = 1f; // Oyun duraklatılmışsa zamanı normale döndür
+        StopMatchCountdown();
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
         if (victoryPanel != null) victoryPanel.SetActive(false);
         if (pausePanel != null) pausePanel.SetActive(false);
         if (pauseButton != null) pauseButton.SetActive(false);
         if (healtBarPanel != null) healtBarPanel.SetActive(false);
+        if (enemyHealthBarPanel != null) enemyHealthBarPanel.SetActive(false);
+        if (waveCounterPanel != null) waveCounterPanel.SetActive(false);
         if (characterPanel != null) characterPanel.SetActive(false);
         if (arenaPanel != null) arenaPanel.SetActive(false);
         if (startPanel != null) startPanel.SetActive(true);
@@ -1068,6 +1145,8 @@ public class UIManager : MonoBehaviour
 
         Time.timeScale = 0f;
         if (healtBarPanel != null) healtBarPanel.SetActive(false);  // ← Can barını gizle
+        if (enemyHealthBarPanel != null) enemyHealthBarPanel.SetActive(false);
+        if (waveCounterPanel != null) waveCounterPanel.SetActive(false);
         if (pausePanel != null)
         {
             pausePanel.transform.SetAsLastSibling(); // Pause panel en öne gelsin
@@ -1086,6 +1165,8 @@ public class UIManager : MonoBehaviour
         Time.timeScale = 1f;
         if (pausePanel != null) pausePanel.SetActive(false);
         if (healtBarPanel != null) healtBarPanel.SetActive(true);   // ← Can barını göster
+        if (waveCounterPanel == null) FindWaveCounterPanel();
+        if (waveCounterPanel != null) waveCounterPanel.SetActive(true);
         if (mobileControlPanel != null) mobileControlPanel.SetActive(true);
         ShowPauseButton();
         Debug.Log("<color=green>[OYUN DEVAM EDİYOR]</color> Pause Panel kapatıldı, oyun devam ediyor.");
@@ -1210,6 +1291,9 @@ public class UIManager : MonoBehaviour
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
         if (pausePanel != null) pausePanel.SetActive(false);
         if (healtBarPanel != null) healtBarPanel.SetActive(true);
+        if (enemyHealthBarPanel != null) enemyHealthBarPanel.SetActive(false);
+        if (waveCounterPanel == null) FindWaveCounterPanel();
+        if (waveCounterPanel != null) waveCounterPanel.SetActive(true);
         if (mobileControlPanel != null) mobileControlPanel.SetActive(true);
         ShowPauseButton();
 
@@ -1224,6 +1308,8 @@ public class UIManager : MonoBehaviour
             }
         }
 
+        UpdateWaveCounterUI(force: true);
+
         if (playerController != null)
         {
             playerController.StartUltiCooldown();
@@ -1235,6 +1321,9 @@ public class UIManager : MonoBehaviour
             camFollow.SetTarget(playerController.transform);
             camFollow.SnapToTarget(); // Kamerayı anında yeni rotasyona (180 dereceye) hizala
         }
+
+        // 5. 3 - 2 - 1 - BAŞLA! geri sayımını başlat
+        TriggerMatchCountdown();
 
         Debug.Log($"<color=cyan>[OYUN BAŞLADI]</color> Karakter: {selectedCharacterName}, Arena Index: {selectedArenaIndex}, Zorluk: {selectedDifficulty}");
     }
@@ -1374,5 +1463,553 @@ public class UIManager : MonoBehaviour
         BindPunchButton();
         BindUppercutButton();
         BindBlockButton();
+    }
+
+    // =========================================================================
+    // 1. DÜŞMAN KAFA ÜSTÜ CAN BARI (ENEMY HEALTH BAR)
+    // =========================================================================
+
+    private void EnsureCanvasReference()
+    {
+        if (rootCanvas == null)
+        {
+            rootCanvas = FindObjectOfType<Canvas>();
+        }
+        if (rootCanvas != null && canvasRectTransform == null)
+        {
+            canvasRectTransform = rootCanvas.GetComponent<RectTransform>();
+        }
+    }
+
+    private void FindAndSetupEnemyHealthBar()
+    {
+        EnsureCanvasReference();
+
+        if (enemyHealthBarPanel == null && rootCanvas != null)
+        {
+            Transform exact = rootCanvas.transform.Find("Enemy Health Bar");
+            if (exact != null)
+            {
+                enemyHealthBarPanel = exact.gameObject;
+            }
+            else
+            {
+                Transform[] allChildren = rootCanvas.GetComponentsInChildren<Transform>(true);
+                foreach (var t in allChildren)
+                {
+                    if (t == null || t == rootCanvas.transform) continue;
+                    string lower = t.name.ToLowerInvariant();
+                    if (lower.Contains("enemy") && (lower.Contains("health") || lower.Contains("healt") || lower.Contains("bar")))
+                    {
+                        // Alt elemanlardan (Green/Red) ziyade ana kapsayıcıyı seç
+                        if (t.parent == rootCanvas.transform || enemyHealthBarPanel == null)
+                        {
+                            enemyHealthBarPanel = t.gameObject;
+                            if (t.parent == rootCanvas.transform) break;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (enemyHealthBarPanel == null) return;
+
+        // İçindeki yeşil doluluk barını (Health Bar Green) ve (varsa) yazıyı bul
+        if (enemyHealthBarFill == null)
+        {
+            Image[] images = enemyHealthBarPanel.GetComponentsInChildren<Image>(true);
+            foreach (var img in images)
+            {
+                if (img == null) continue;
+                string lower = img.gameObject.name.ToLowerInvariant();
+                if (lower.Contains("green") || lower.Contains("fill"))
+                {
+                    enemyHealthBarFill = img;
+                    break;
+                }
+            }
+
+            // İsimde Green yoksa Filled tipinde olan ve Red olmayan ilk Image'ı seç
+            if (enemyHealthBarFill == null)
+            {
+                foreach (var img in images)
+                {
+                    if (img == null) continue;
+                    string lower = img.gameObject.name.ToLowerInvariant();
+                    if (!lower.Contains("red") && !lower.Contains("bg") && img.type == Image.Type.Filled)
+                    {
+                        enemyHealthBarFill = img;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (enemyHealthBarFill != null)
+        {
+            enemyHealthBarFill.type = Image.Type.Filled;
+            enemyHealthBarFill.fillMethod = Image.FillMethod.Horizontal;
+        }
+
+        if (enemyHealthText == null)
+        {
+            enemyHealthText = enemyHealthBarPanel.GetComponentInChildren<TMP_Text>(true);
+        }
+
+        // Kafa üstü can barı ekranda gezerken tıklamaları / dokunmaları engellemesin
+        Graphic[] graphics = enemyHealthBarPanel.GetComponentsInChildren<Graphic>(true);
+        foreach (var g in graphics)
+        {
+            if (g != null) g.raycastTarget = false;
+        }
+
+        NormalizeEnemyHealthBarLayout();
+    }
+
+    /// <summary>
+    /// Eğer Enemy Health Bar, Player'ın Health Bar'ından kopyalandıysa altındaki Health Bar Red / Green
+    /// nesnelerinde kalmış olabilecek (-335 gibi) yerel kaymaları sıfırlar; böylece bar tam düşmanın kafasının üstünde durur.
+    /// </summary>
+    private void NormalizeEnemyHealthBarLayout()
+    {
+        if (enemyHealthBarNormalized || enemyHealthBarPanel == null) return;
+        enemyHealthBarNormalized = true;
+
+        Transform panelT = enemyHealthBarPanel.transform;
+        if (panelT.childCount == 0) return;
+
+        // Referans merkezi olarak Health Bar Green (veya ilk RectTransform çocuk) konumunu al
+        RectTransform refChild = enemyHealthBarFill != null
+            ? enemyHealthBarFill.GetComponent<RectTransform>()
+            : panelT.GetChild(0).GetComponent<RectTransform>();
+
+        Vector3 refWorldPos = refChild != null ? refChild.position : panelT.position;
+
+        List<RectTransform> directRectChildren = new List<RectTransform>();
+        List<Vector3> worldOffsets = new List<Vector3>();
+
+        for (int i = 0; i < panelT.childCount; i++)
+        {
+            RectTransform rt = panelT.GetChild(i) as RectTransform;
+            if (rt != null)
+            {
+                directRectChildren.Add(rt);
+                worldOffsets.Add(rt.position - refWorldPos);
+            }
+        }
+
+        for (int i = 0; i < directRectChildren.Count; i++)
+        {
+            RectTransform rt = directRectChildren[i];
+            rt.anchorMin = new Vector2(0.5f, 0.5f);
+            rt.anchorMax = new Vector2(0.5f, 0.5f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.position = panelT.position + worldOffsets[i];
+        }
+    }
+
+    /// <summary>
+    /// Oyuncu bir düşmana vurduğunda çağrılır; ilgili düşmanın kafasının üzerinde can barını gösterir ve azaltır.
+    /// </summary>
+    public void NotifyEnemyHit(EnemyController enemy)
+    {
+        if (enemy == null) return;
+        if (enemyHealthBarPanel == null) FindAndSetupEnemyHealthBar();
+        if (enemyHealthBarPanel == null) return;
+
+        if (trackedEnemy != enemy || trackedEnemyHeadBone == null)
+        {
+            trackedEnemy = enemy;
+            Animator anim = enemy.GetComponent<Animator>() ?? enemy.GetComponentInChildren<Animator>();
+            trackedEnemyHeadBone = (anim != null && anim.isHuman) ? anim.GetBoneTransform(HumanBodyBones.Head) : null;
+        }
+
+        float maxHp = Mathf.Max(1f, enemy.MaxHealth);
+        float curHp = Mathf.Clamp(enemy.CurrentHealth, 0f, maxHp);
+
+        if (enemyHealthBarFill != null)
+        {
+            enemyHealthBarFill.fillAmount = curHp / maxHp;
+        }
+
+        if (enemyHealthText != null)
+        {
+            enemyHealthText.SetText(Mathf.CeilToInt(curHp).ToString());
+        }
+
+        // Düşman bu darbeyle nakavt olduysa (canı 0'a indiyse) barın sıfırlandığını kısaca (0.65 sn) gösterip gizle;
+        // hayattaysa vurulduktan sonra enemyHealthBarVisibleDuration (2.5 sn) boyunca açık tut.
+        float duration = (curHp <= 0f || enemy.IsDead) ? 0.65f : enemyHealthBarVisibleDuration;
+        enemyHealthBarHideTime = Time.time + duration;
+
+        if (!enemyHealthBarPanel.activeSelf && IsGameplayHUDActive())
+        {
+            enemyHealthBarPanel.SetActive(true);
+        }
+
+        UpdateEnemyHealthBarTracking();
+    }
+
+    private bool IsGameplayHUDActive()
+    {
+        return (startPanel == null || !startPanel.activeSelf) &&
+               (characterPanel == null || !characterPanel.activeSelf) &&
+               (arenaPanel == null || !arenaPanel.activeSelf) &&
+               (pausePanel == null || !pausePanel.activeSelf) &&
+               (gameOverPanel == null || !gameOverPanel.activeSelf) &&
+               (victoryPanel == null || !victoryPanel.activeSelf);
+    }
+
+    private void UpdateEnemyHealthBarTracking()
+    {
+        if (enemyHealthBarPanel == null || !enemyHealthBarPanel.activeSelf) return;
+
+        if (trackedEnemy == null || Time.time >= enemyHealthBarHideTime || !IsGameplayHUDActive())
+        {
+            enemyHealthBarPanel.SetActive(false);
+            trackedEnemy = null;
+            trackedEnemyHeadBone = null;
+            return;
+        }
+
+        // Düşman öldüyse barın ekranda kalma süresini kısalt
+        if (trackedEnemy.IsDead && enemyHealthBarHideTime > Time.time + 0.65f)
+        {
+            enemyHealthBarHideTime = Time.time + 0.65f;
+        }
+
+        // Can değerini anlık senkronize et
+        float maxHp = Mathf.Max(1f, trackedEnemy.MaxHealth);
+        float curHp = Mathf.Clamp(trackedEnemy.CurrentHealth, 0f, maxHp);
+        if (enemyHealthBarFill != null)
+        {
+            enemyHealthBarFill.fillAmount = curHp / maxHp;
+        }
+        if (enemyHealthText != null)
+        {
+            enemyHealthText.SetText(Mathf.CeilToInt(curHp).ToString());
+        }
+
+        Camera cam = Camera.main;
+        if (cam == null) return;
+
+        Vector3 headWorldPos;
+        if (trackedEnemyHeadBone != null)
+        {
+            Vector3 horizontalBase = Vector3.Lerp(trackedEnemy.transform.position, trackedEnemyHeadBone.position, 0.5f);
+            float headY = Mathf.Max(trackedEnemyHeadBone.position.y + enemyHeadHeightOffset, trackedEnemy.transform.position.y + 1.85f);
+            headWorldPos = new Vector3(horizontalBase.x, headY, horizontalBase.z);
+        }
+        else
+        {
+            headWorldPos = trackedEnemy.transform.position + Vector3.up * enemyFallbackHeightOffset;
+        }
+
+        Vector3 screenPos = cam.WorldToScreenPoint(headWorldPos);
+        if (screenPos.z <= 0f)
+        {
+            return;
+        }
+
+        // Ekran sınırları içinde tut
+        float marginX = 60f;
+        float marginY = 35f;
+        screenPos.x = Mathf.Clamp(screenPos.x, marginX, Screen.width - marginX);
+        screenPos.y = Mathf.Clamp(screenPos.y, marginY, Screen.height - marginY);
+
+        EnsureCanvasReference();
+        if (canvasRectTransform != null)
+        {
+            Camera uiCam = (rootCanvas != null && rootCanvas.renderMode != RenderMode.ScreenSpaceOverlay)
+                ? rootCanvas.worldCamera
+                : null;
+
+            if (RectTransformUtility.ScreenPointToWorldPointInRectangle(canvasRectTransform, screenPos, uiCam, out Vector3 uiWorldPos))
+            {
+                enemyHealthBarPanel.transform.position = uiWorldPos;
+            }
+            else
+            {
+                enemyHealthBarPanel.transform.position = screenPos;
+            }
+        }
+        else
+        {
+            enemyHealthBarPanel.transform.position = screenPos;
+        }
+    }
+
+    // =========================================================================
+    // 2. GERİ SAYIM PANELİ (COUNT DOWN PANEL: 3 - 2 - 1 -> 300 | BAŞLA! -> 90)
+    // =========================================================================
+
+    private void FindCountDownPanel()
+    {
+        EnsureCanvasReference();
+
+        if (countDownPanel == null && rootCanvas != null)
+        {
+            Transform exact = rootCanvas.transform.Find("Count Down Panel")
+                           ?? rootCanvas.transform.Find("CountDown Panel")
+                           ?? rootCanvas.transform.Find("Countdown Panel");
+            if (exact != null)
+            {
+                countDownPanel = exact.gameObject;
+            }
+            else
+            {
+                foreach (Transform child in rootCanvas.transform)
+                {
+                    if (child == null) continue;
+                    string lower = child.name.ToLowerInvariant();
+                    if (lower.Contains("count") && lower.Contains("down"))
+                    {
+                        countDownPanel = child.gameObject;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (countDownPanel == null) return;
+
+        if (countDownText == null)
+        {
+            countDownText = countDownPanel.GetComponentInChildren<TMP_Text>(true);
+        }
+        if (legacyCountDownText == null)
+        {
+            legacyCountDownText = countDownPanel.GetComponentInChildren<Text>(true);
+        }
+
+        if (countDownText != null)
+        {
+            countDownText.enableAutoSizing = false;
+            countDownText.enableWordWrapping = false;
+            countDownText.overflowMode = TextOverflowModes.Overflow;
+            countDownText.alignment = TextAlignmentOptions.Center;
+        }
+
+        if (legacyCountDownText != null)
+        {
+            legacyCountDownText.resizeTextForBestFit = false;
+            legacyCountDownText.horizontalOverflow = HorizontalWrapMode.Overflow;
+            legacyCountDownText.verticalOverflow = VerticalWrapMode.Overflow;
+            legacyCountDownText.alignment = TextAnchor.MiddleCenter;
+        }
+
+        Graphic[] graphics = countDownPanel.GetComponentsInChildren<Graphic>(true);
+        foreach (var g in graphics)
+        {
+            if (g != null) g.raycastTarget = false;
+        }
+    }
+
+    public void TriggerMatchCountdown()
+    {
+        FindCountDownPanel();
+        if (countDownCoroutine != null)
+        {
+            StopCoroutine(countDownCoroutine);
+            countDownCoroutine = null;
+        }
+        countDownCoroutine = StartCoroutine(CountdownRoutine());
+    }
+
+    public void StopMatchCountdown()
+    {
+        if (countDownCoroutine != null)
+        {
+            StopCoroutine(countDownCoroutine);
+            countDownCoroutine = null;
+        }
+        IsCountingDown = false;
+        if (countDownPanel != null)
+        {
+            countDownPanel.SetActive(false);
+        }
+    }
+
+    private IEnumerator CountdownRoutine()
+    {
+        IsCountingDown = true;
+
+        if (countDownPanel != null)
+        {
+            countDownPanel.transform.SetAsLastSibling();
+            countDownPanel.SetActive(true);
+        }
+
+        // 3 (Font Size: 300)
+        SetCountDownDisplay("3", 300f);
+        yield return new WaitForSeconds(1.0f);
+
+        // 2 (Font Size: 300)
+        SetCountDownDisplay("2", 300f);
+        yield return new WaitForSeconds(1.0f);
+
+        // 1 (Font Size: 300)
+        SetCountDownDisplay("1", 300f);
+        yield return new WaitForSeconds(1.0f);
+
+        // BAŞLA! (Font Size: 90)
+        SetCountDownDisplay("BAŞLA!", 90f);
+        IsCountingDown = false; // BAŞLA! yazısı ekrana geldiği anda dövüş başlasın
+        yield return new WaitForSeconds(0.8f);
+
+        if (countDownPanel != null)
+        {
+            countDownPanel.SetActive(false);
+        }
+
+        countDownCoroutine = null;
+    }
+
+    private void SetCountDownDisplay(string textValue, float fontSize)
+    {
+        if (countDownText != null)
+        {
+            countDownText.enableAutoSizing = false;
+            countDownText.fontSize = fontSize;
+            countDownText.SetText(textValue);
+        }
+
+        if (legacyCountDownText != null)
+        {
+            legacyCountDownText.resizeTextForBestFit = false;
+            legacyCountDownText.fontSize = Mathf.RoundToInt(fontSize);
+            legacyCountDownText.text = textValue;
+        }
+    }
+
+    // =========================================================================
+    // 3. DALGA SAYACI PANELİ (WAVE COUNTER PANEL)
+    // =========================================================================
+
+    private void FindWaveCounterPanel()
+    {
+        EnsureCanvasReference();
+
+        if (waveCounterPanel == null && rootCanvas != null)
+        {
+            Transform exact = rootCanvas.transform.Find("Wave Counter Panel")
+                           ?? rootCanvas.transform.Find("WaveCounter Panel")
+                           ?? rootCanvas.transform.Find("WaveCounterPanel")
+                           ?? rootCanvas.transform.Find("Wave Panel");
+            if (exact != null)
+            {
+                waveCounterPanel = exact.gameObject;
+            }
+            else
+            {
+                foreach (Transform child in rootCanvas.transform)
+                {
+                    if (child == null) continue;
+                    string lower = child.name.ToLowerInvariant();
+                    if (lower.Contains("wave") && (lower.Contains("counter") || lower.Contains("panel") || lower.Contains("count")))
+                    {
+                        waveCounterPanel = child.gameObject;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (waveCounterPanel == null) return;
+
+        if (waveCounterText == null)
+        {
+            TMP_Text[] tmpTexts = waveCounterPanel.GetComponentsInChildren<TMP_Text>(true);
+            if (tmpTexts != null && tmpTexts.Length > 0)
+            {
+                if (tmpTexts.Length == 1)
+                {
+                    waveCounterText = tmpTexts[0];
+                }
+                else
+                {
+                    // Birden fazla TMP_Text varsa (örn. sabit "DALGA" başlığı + sayı alanı), sayı alanını seç
+                    foreach (var t in tmpTexts)
+                    {
+                        string trimmed = (t.text ?? "").Trim();
+                        if (int.TryParse(trimmed, out _) || t.name.ToLowerInvariant().Contains("count") || t.name.ToLowerInvariant().Contains("num"))
+                        {
+                            waveCounterText = t;
+                            waveCounterFormatTemplate = "{0}";
+                            break;
+                        }
+                    }
+                    if (waveCounterText == null)
+                    {
+                        waveCounterText = tmpTexts[tmpTexts.Length - 1];
+                    }
+                }
+            }
+        }
+
+        if (legacyWaveCounterText == null && waveCounterText == null)
+        {
+            legacyWaveCounterText = waveCounterPanel.GetComponentInChildren<Text>(true);
+        }
+
+        if (waveCounterText != null)
+        {
+            waveCounterText.enableWordWrapping = false;
+            waveCounterText.overflowMode = TextOverflowModes.Overflow;
+
+            if (string.IsNullOrEmpty(waveCounterFormatTemplate))
+            {
+                string initial = (waveCounterText.text ?? "").Trim();
+                string lower = initial.ToLowerInvariant();
+                if (lower.Contains("dalga") || lower.Contains("wave"))
+                {
+                    if (System.Text.RegularExpressions.Regex.IsMatch(initial, @"\d+"))
+                    {
+                        waveCounterFormatTemplate = System.Text.RegularExpressions.Regex.Replace(initial, @"\d+", "{0}");
+                    }
+                    else
+                    {
+                        waveCounterFormatTemplate = initial + " {0}";
+                    }
+                }
+                else
+                {
+                    waveCounterFormatTemplate = "DALGA {0}";
+                }
+            }
+        }
+
+        Graphic[] graphics = waveCounterPanel.GetComponentsInChildren<Graphic>(true);
+        foreach (var g in graphics)
+        {
+            if (g != null) g.raycastTarget = false;
+        }
+    }
+
+    public void UpdateWaveCounterUI(bool force = false)
+    {
+        if (waveCounterPanel == null) return;
+        if (!waveCounterPanel.activeSelf && !force) return;
+
+        if (enemySpawner == null)
+        {
+            enemySpawner = FindObjectOfType<EnemySpawner>();
+        }
+
+        int currentWave = (enemySpawner != null && enemySpawner.CurrentWave > 0) ? enemySpawner.CurrentWave : 1;
+        if (!force && currentWave == lastDisplayedWave) return;
+
+        lastDisplayedWave = currentWave;
+        string template = string.IsNullOrEmpty(waveCounterFormatTemplate) ? "DALGA {0}" : waveCounterFormatTemplate;
+        string formatted = string.Format(template, currentWave);
+
+        if (waveCounterText != null)
+        {
+            waveCounterText.SetText(formatted);
+        }
+        if (legacyWaveCounterText != null)
+        {
+            legacyWaveCounterText.text = formatted;
+        }
     }
 }

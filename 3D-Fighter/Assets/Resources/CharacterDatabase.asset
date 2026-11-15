@@ -13,16 +13,16 @@ MonoBehaviour:
   m_Name: CharacterDatabase
   m_EditorClassIdentifier: 
   characters:
-  - characterId: Elvis
-    displayName: Elvis
-    previewTexture: {fileID: 8400000, guid: 4fc5d60743d63ff4888634edc8064dae, type: 2}
-    playerPrefab: {fileID: 5648850232931515238, guid: 1c441596f2efced45b3125a22fe9d6a7, type: 3}
-    enemyPrefab: {fileID: 5648850232931515238, guid: 5a772418047da24ba4762083ab775be9, type: 3}
   - characterId: Ortiz
     displayName: Ortiz
     previewTexture: {fileID: 8400000, guid: cd6cdef0e763b534fb2e6deb5749735b, type: 2}
     playerPrefab: {fileID: 3645599480351997236, guid: f7721e1830592b648b9f9ceb6633a24b, type: 3}
     enemyPrefab: {fileID: 3645599480351997236, guid: 5e2e315ae481ca34a96f39a424f5fc5e, type: 3}
+  - characterId: Elvis
+    displayName: Elvis
+    previewTexture: {fileID: 8400000, guid: 4fc5d60743d63ff4888634edc8064dae, type: 2}
+    playerPrefab: {fileID: 5648850232931515238, guid: 1c441596f2efced45b3125a22fe9d6a7, type: 3}
+    enemyPrefab: {fileID: 5648850232931515238, guid: 5a772418047da24ba4762083ab775be9, type: 3}
   - characterId: Grand Mom
     displayName: Grand Mom
     previewTexture: {fileID: 8400000, guid: d572c1abf0045364b89c1f626572f43a, type: 2}

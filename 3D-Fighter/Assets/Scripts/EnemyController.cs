@@ -53,6 +53,7 @@ public class EnemyController : MonoBehaviour
     public float UppercutChance { get => uppercutChance; set => uppercutChance = value; }
     private Transform playerTransform;
     private PlayerController playerController;
+    private UIManager uiManager;
     private float nextAttackTime = 0f;
 
     [Header("Blok & Gard Ayarları (Senaryo 1: Ardışık Darbe Savunması)")]
@@ -160,11 +161,14 @@ public class EnemyController : MonoBehaviour
             EnemyGroupCoordinator.Instance.RegisterEnemy(this);
         }
 
-        // Adaptif Dövüş Beyni (AdaptiveCombatBrain) kontrolü
-        if (GetComponent<AdaptiveCombatBrain>() == null)
+        // Adaptif Dövüş Beyni (AdaptiveCombatBrain) kontrolü ve ortak kalıcı hafızayla senkronizasyonu
+        AdaptiveCombatBrain brain = GetComponent<AdaptiveCombatBrain>();
+        if (brain == null)
         {
-            gameObject.AddComponent<AdaptiveCombatBrain>();
+            brain = gameObject.AddComponent<AdaptiveCombatBrain>();
         }
+        brain.RefreshCanonicalBaseStats();
+        brain.SyncWithSharedTracker();
     }
 
     void OnDestroy()
@@ -313,8 +317,8 @@ public class EnemyController : MonoBehaviour
             transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(lookDirection), Time.deltaTime * 6f);
         }
 
-        // Eğer düşman şu an blok yapıyorsa, darbe alıyorsa, saldırıdaysa veya Ulti sonrası ölüm gecikmesindeyse: hareket edip saldırmasın
-        if (isBlocking || isTakingHit || isPendingUltiDeath || isAttacking)
+        // Eğer 3-2-1 geri sayımı aktifse veya düşman şu an blok yapıyorsa, darbe alıyorsa, saldırıdaysa ya da Ulti sonrası ölüm gecikmesindeyse: hareket edip saldırmasın
+        if (UIManager.IsCountingDown || isBlocking || isTakingHit || isPendingUltiDeath || isAttacking)
         {
             if (enemyAnimator != null)
             {
@@ -712,11 +716,7 @@ public class EnemyController : MonoBehaviour
             else
             {
                 Debug.Log($"<color=yellow>[DÜŞMAN BLOKLADI!]</color> {gameObject.name} gelen normal yumruğu gardıyla savuşturdu! (Hasar Alınmadı)");
-
-                // Gardın arkasına hafif sarsıntı tepkisi (boksör darbeyi emer) kullanıcı isteğiyle iptal edildi
-                // transform.position += (-transform.forward) * (knockbackDistance * 0.4f);
-                // Vector3 blockPos = RingBoundary.ClampToArena(transform.position, bodyRadius);
-                // transform.position = blockPos;
+                NotifyUIEnemyHit();
                 return;
             }
         }
@@ -732,7 +732,8 @@ public class EnemyController : MonoBehaviour
             consecutiveHitsTaken++;
         }
 
-        health -= damageAmount;
+        health = Mathf.Max(0f, health - damageAmount);
+        NotifyUIEnemyHit();
         Debug.Log($"<color=orange>[DÜŞMAN DARBE ALDI]</color> {gameObject.name} -{damageAmount} can kaybetti! Kalan Can: {health} (Aparkat: {isUppercut}, Ulti: {fromUlti}, Darbe Sayacı: {consecutiveHitsTaken}/{hitsToTriggerBlock})");
 
         // Darbe alınca hafif geriye çekilme (Knockback) kullanıcı isteğiyle kaldırıldı
@@ -955,6 +956,7 @@ public class EnemyController : MonoBehaviour
             gameBalanceConfig = Resources.Load<GameBalanceSO>("GameBalanceConfig");
         }
 
+        bool appliedFromProfile = false;
         if (gameBalanceConfig != null)
         {
             DifficultyWaveProfile profile = gameBalanceConfig.GetProfile(diff);
@@ -964,25 +966,47 @@ public class EnemyController : MonoBehaviour
                 blockChance = profile.blockChance;
                 blockDuration = profile.blockDuration;
                 blockCooldown = profile.blockCooldown;
-                return;
+                appliedFromProfile = true;
             }
         }
 
-        hitsToTriggerBlock = 2;
-        blockChance = 1.0f;
-        blockCooldown = 0.5f;
-
-        switch (diff)
+        if (!appliedFromProfile)
         {
-            case Difficulty.Easy:
-                blockDuration = 1.0f;
-                break;
-            case Difficulty.Medium:
-                blockDuration = 1.2f;
-                break;
-            case Difficulty.Hard:
-                blockDuration = 1.4f;
-                break;
+            hitsToTriggerBlock = 2;
+            blockChance = 1.0f;
+            blockCooldown = 0.5f;
+
+            switch (diff)
+            {
+                case Difficulty.Easy:
+                    blockDuration = 1.0f;
+                    break;
+                case Difficulty.Medium:
+                    blockDuration = 1.2f;
+                    break;
+                case Difficulty.Hard:
+                    blockDuration = 1.4f;
+                    break;
+            }
+        }
+
+        AdaptiveCombatBrain brain = GetComponent<AdaptiveCombatBrain>();
+        if (brain != null)
+        {
+            brain.RefreshCanonicalBaseStats();
+            brain.SyncWithSharedTracker();
+        }
+    }
+
+    private void NotifyUIEnemyHit()
+    {
+        if (uiManager == null)
+        {
+            uiManager = FindObjectOfType<UIManager>();
+        }
+        if (uiManager != null)
+        {
+            uiManager.NotifyEnemyHit(this);
         }
     }
 

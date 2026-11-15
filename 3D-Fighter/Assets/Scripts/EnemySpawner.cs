@@ -711,7 +711,7 @@ public class EnemySpawner : MonoBehaviour
     IEnumerator SpawnEnemyRoutine(int currentWave, bool isFirst = false)
     {
         isSpawning = true;
-        if (PlayerCombatTracker.Instance != null) { PlayerCombatTracker.Instance.ResetTracker(); }
+        if (PlayerCombatTracker.Instance != null) { PlayerCombatTracker.Instance.OnMatchOrWaveTransition(); }
 
         // 4. Dalga başında can 110'a, 8. Dalga başında can 120'ye dolar. Diğer dalgalarda mevcut can korunur.
         bool shouldRefillHealth = isFirst || currentWave == 4 || currentWave == 8;
@@ -732,13 +732,19 @@ public class EnemySpawner : MonoBehaviour
         int enemyCount = GetEnemyCountForWave(currentWave);
         Debug.Log($"<color=yellow>[YENİ DALGA GELİYOR]</color> Dalga {currentWave} ({enemyCount} Düşman) - Saha: #1 - Zorluk: {currentDifficulty}");
 
+        UIManager uiMgr = FindObjectOfType<UIManager>();
+        if (uiMgr != null)
+        {
+            uiMgr.UpdateWaveCounterUI(force: true);
+        }
+
         if (!isFirst)
         {
             yield return new WaitForSeconds(respawnDelay);
         }
         else
         {
-            yield return new WaitForSeconds(0.4f);
+            yield return new WaitForSeconds(0.05f);
         }
 
         SpawnEnemy(enemyCount);

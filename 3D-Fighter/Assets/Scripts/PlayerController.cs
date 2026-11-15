@@ -391,12 +391,37 @@ public class PlayerController : MonoBehaviour
         // Oyuncu öldüyse, ayağa kalkıyorsa veya tüm dalgalar bittiyse hareket edip yumruk atamasın
         if (isDead || isGameCompleted || isStandingUp) return;
 
+        // 3 - 2 - 1 Geri sayımı sürerken oyuncu hareket etmesin ve saldırmasın; yüzünü rakibe dönük tutsun
+        if (UIManager.IsCountingDown)
+        {
+            if (playerAnim != null)
+            {
+                playerAnim.SetBool("Forward_Move", false);
+                playerAnim.SetBool("Backward_Move", false);
+                playerAnim.SetBool("Left_Move", false);
+                playerAnim.SetBool("Right_Move", false);
+            }
+            FaceOpponentOnPunch();
+            return;
+        }
+
         // Düşmandan darbe alındığında (Hit Stun): Hasar alma animasyonu oynar, hareket ve vuruş kilitlenir!
         if (isHitStunned)
         {
             if (isBlocking)
             {
                 isBlocking = false;
+                if (blockingCoroutine != null)
+                {
+                    StopCoroutine(blockingCoroutine);
+                    blockingCoroutine = null;
+                }
+                if (playerAnim != null)
+                {
+                    playerAnim.speed = 1f;
+                    playerAnim.SetBool("isBlocking", false);
+                }
+                if (PlayerCombatTracker.Instance != null) { PlayerCombatTracker.Instance.RecordBlockState(false); }
             }
             FaceOpponentOnPunch();
             return;
@@ -414,12 +439,13 @@ public class PlayerController : MonoBehaviour
                 currentMoveAnim = MoveAnim.None;
                 if (playerAnim != null)
                 {
+                    playerAnim.speed = 1f;
                     playerAnim.SetBool("isBlocking", true);
                     playerAnim.SetBool("Forward_Move", false);
                     playerAnim.SetBool("Backward_Move", false);
                     playerAnim.SetBool("Left_Move", false);
                     playerAnim.SetBool("Right_Move", false);
-                    // Önce Blocking giriş animasyonunu oynat, ardından Block Idle'a geç
+                    // Blocking gard hamlesini oynat ve tuşa basılı tutulduğu sürece gard pozunda sabit tut
                     if (blockingCoroutine != null) StopCoroutine(blockingCoroutine);
                     blockingCoroutine = StartCoroutine(BlockingEnterRoutine());
                 }
@@ -433,6 +459,7 @@ public class PlayerController : MonoBehaviour
                 currentMoveAnim = MoveAnim.None;
                 if (playerAnim != null)
                 {
+                    playerAnim.speed = 1f;
                     playerAnim.SetBool("isBlocking", false);
                     if (PlayerCombatTracker.Instance != null) { PlayerCombatTracker.Instance.RecordBlockState(false); }
                 }
@@ -446,6 +473,10 @@ public class PlayerController : MonoBehaviour
                     playerAnim.CrossFadeInFixedTime("Idle", 0.15f);
                     currentMoveAnim = MoveAnim.Idle;
                 }
+            }
+            else if (playerAnim != null && playerAnim.speed == 0f)
+            {
+                playerAnim.speed = 1f;
             }
         }
 
@@ -701,41 +732,57 @@ public class PlayerController : MonoBehaviour
     }
 
     /// <summary>
-    /// Blok başladığında Blocking giriş animasyonunu oynatır,
-    /// animasyon bitince Block Idle pozuna geçer.
-    /// Oyuncu bloktan çıkarsa Coroutine otomatik durdurulur.
+    /// Blok başladığında Blocking gard alma animasyonunu tam savunma pozuna kadar oynatır
+    /// ve oyuncu blok tuşuna basılı tuttuğu sürece o gard pozunda sabit tutar.
+    /// Tuş bırakıldığında Animator hızı normale dönüp Idle pozuna geçer.
     /// </summary>
     private IEnumerator BlockingEnterRoutine()
     {
         if (playerAnim == null) yield break;
 
-        // 1. Blocking giriş animasyonunu oynat
+        // 1. Blocking giriş animasyonunu normal hızda başlat
+        playerAnim.speed = 1f;
         playerAnim.CrossFadeInFixedTime("Blocking", 0.08f);
 
         // 2. Animator'ın state'e geçmesi için bir kare bekle
         yield return null;
 
-        // 3. "Blocking" animasyonunun bitmesini bekle
-        float timeout = 2.0f; // Maksimum bekleme süresi (donmayı önler)
+        // 3. "Blocking" animasyonunun tam gard pozuna (kolların yüz önünde kapandığı tepe noktasına ~%45) ulaşmasını bekle
+        const float guardPoseHoldTime = 0.45f;
+        float timeout = 1.5f;
         float elapsed = 0f;
         while (elapsed < timeout)
         {
-            // Bloktan çıkıldıysa dur (isBlocking false oldu)
-            if (!isBlocking) yield break;
+            if (!isBlocking || playerAnim == null)
+            {
+                if (playerAnim != null) playerAnim.speed = 1f;
+                yield break;
+            }
 
             AnimatorStateInfo info = playerAnim.GetCurrentAnimatorStateInfo(0);
-            if (info.IsName("Blocking") && info.normalizedTime >= 0.85f)
+            if (!playerAnim.IsInTransition(0) && info.IsName("Blocking") && info.normalizedTime >= guardPoseHoldTime)
             {
-                break; // Animasyon bitti
+                break;
             }
             elapsed += Time.deltaTime;
             yield return null;
         }
 
-        // 4. Hâlâ blok yapıyorsa Block Idle'a geç
+        // 4. Oyuncu tuşa basılı tuttuğu sürece karakteri bu gard hamlesinde sabit tut
         if (isBlocking && playerAnim != null)
         {
-            playerAnim.CrossFadeInFixedTime("Block Idle", 0.1f);
+            playerAnim.Play("Blocking", 0, guardPoseHoldTime);
+            playerAnim.speed = 0f;
+        }
+
+        while (isBlocking && playerAnim != null)
+        {
+            yield return null;
+        }
+
+        if (playerAnim != null)
+        {
+            playerAnim.speed = 1f;
         }
 
         blockingCoroutine = null;
@@ -743,7 +790,7 @@ public class PlayerController : MonoBehaviour
 
     void ExecutePunch()
     {
-        if (isPunching || isHitStunned || isBlocking || isDead || isGameCompleted || isStandingUp) return;
+        if (UIManager.IsCountingDown || isPunching || isHitStunned || isBlocking || isDead || isGameCompleted || isStandingUp) return;
         if (Time.time < nextPunchAvailableTime) return;
 
         isPunching = true;
@@ -785,7 +832,7 @@ public class PlayerController : MonoBehaviour
     /// </summary>
     void ExecuteUppercut()
     {
-        if (isPunching || isHitStunned || isBlocking || isDead || isGameCompleted || isStandingUp) return;
+        if (UIManager.IsCountingDown || isPunching || isHitStunned || isBlocking || isDead || isGameCompleted || isStandingUp) return;
         if (Time.time < nextPunchAvailableTime) return;
 
         isPunching = true;
@@ -1541,6 +1588,8 @@ public class PlayerController : MonoBehaviour
 
         if (playerAnim != null)
         {
+            playerAnim.speed = 1f;
+            playerAnim.SetBool("isBlocking", false);
             currentMoveAnim = MoveAnim.None;
             playerAnim.SetBool("isDead", false);
             playerAnim.SetBool("isUppercutDead", false);
@@ -1861,6 +1910,8 @@ public class PlayerController : MonoBehaviour
 
         if (playerAnim != null)
         {
+            playerAnim.speed = 1f;
+            playerAnim.SetBool("isBlocking", false);
             currentMoveAnim = MoveAnim.None;
             playerAnim.SetBool("isDead", true);
             playerAnim.SetBool("isUppercutDead", isUppercut);
@@ -1998,6 +2049,8 @@ public class PlayerController : MonoBehaviour
 
         if (playerAnim != null)
         {
+            playerAnim.speed = 1f;
+            playerAnim.SetBool("isBlocking", false);
             currentMoveAnim = MoveAnim.None;
             playerAnim.SetBool("isDead", false);
             playerAnim.SetBool("isDeadEnemy", false);
@@ -2103,8 +2156,11 @@ public class PlayerController : MonoBehaviour
             if (enemy != null && !enemy.IsDead)
             {
                 enemy.SetPlayerDead(false);
-                if (PlayerCombatTracker.Instance != null) { PlayerCombatTracker.Instance.ResetTracker(); }
             }
+        }
+        if (PlayerCombatTracker.Instance != null)
+        {
+            PlayerCombatTracker.Instance.OnMatchOrWaveTransition();
         }
 
         Debug.Log("<color=green>[OYUNCU KİP UP YAPARAK AYAĞA KALKTI VE YENİDEN DOĞDU!]</color>");
