@@ -14,37 +14,37 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   characters:
   - characterId: Ortiz
-    displayName: Ortiz
+    displayName: ORTIZ
     previewTexture: {fileID: 8400000, guid: cd6cdef0e763b534fb2e6deb5749735b, type: 2}
     playerPrefab: {fileID: 3645599480351997236, guid: f7721e1830592b648b9f9ceb6633a24b, type: 3}
     enemyPrefab: {fileID: 3645599480351997236, guid: 5e2e315ae481ca34a96f39a424f5fc5e, type: 3}
   - characterId: Elvis
-    displayName: Elvis
+    displayName: ELVIS
     previewTexture: {fileID: 8400000, guid: 4fc5d60743d63ff4888634edc8064dae, type: 2}
     playerPrefab: {fileID: 5648850232931515238, guid: 1c441596f2efced45b3125a22fe9d6a7, type: 3}
     enemyPrefab: {fileID: 5648850232931515238, guid: 5a772418047da24ba4762083ab775be9, type: 3}
   - characterId: Grand Mom
-    displayName: Grand Mom
+    displayName: GRAND MOM
     previewTexture: {fileID: 8400000, guid: d572c1abf0045364b89c1f626572f43a, type: 2}
     playerPrefab: {fileID: 5610208854758869965, guid: 4f9b8473f273df44e8f3bc6afd9dbaa2, type: 3}
     enemyPrefab: {fileID: 5610208854758869965, guid: 9fe0ae3e91b98b34bbc8373b17c1898c, type: 3}
   - characterId: Adem
-    displayName: Adem
+    displayName: ADEM
     previewTexture: {fileID: 8400000, guid: 3173e005c3781fb44a5c6de0a83bf0a5, type: 2}
     playerPrefab: {fileID: 3645599480351997236, guid: a7656f74da17c1d4aba8d9aca3334d45, type: 3}
     enemyPrefab: {fileID: 4871891290163945460, guid: e9663ab1a813def4c8a426d3ce89c4da, type: 3}
   - characterId: Emine
-    displayName: Emine
+    displayName: SOFT GIRL
     previewTexture: {fileID: 8400000, guid: 287dfb37b6524b24ca06ee718e6edb70, type: 2}
     playerPrefab: {fileID: 3645599480351997236, guid: 0d401db3c412467409dc961d900197dc, type: 3}
     enemyPrefab: {fileID: 6980822163667747243, guid: bdfd3bf03b2b6aa49ad94c72d2db2909, type: 3}
-  - characterId: Husnu
-    displayName: "H\xFCsn\xFC"
+  - characterId: "H\xFCsn\xFC"
+    displayName: CIGAR MAN
     previewTexture: {fileID: 8400000, guid: 58bc5bcf93595f544b599547c7d264ff, type: 2}
     playerPrefab: {fileID: 3645599480351997236, guid: 608e64da4d814d84988f6de3e5de397a, type: 3}
     enemyPrefab: {fileID: 1631315993400984703, guid: fbc75d45decccca4399b31276888accb, type: 3}
   - characterId: Kezban
-    displayName: Kezban
+    displayName: TECH GIRL
     previewTexture: {fileID: 8400000, guid: 96e64f9e7459f4546b2839d1d65bd7c4, type: 2}
     playerPrefab: {fileID: 3645599480351997236, guid: 9159285a3fab28146baf194583c45f3b, type: 3}
     enemyPrefab: {fileID: 414526563336580558, guid: 9d5d2d30a3f679443affb8bcc0d16752, type: 3}

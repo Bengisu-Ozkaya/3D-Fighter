@@ -1,0 +1,369 @@
+fileFormatVersion: 2
+guid: 32f4a68a8c066ba4ebea287242f5059a
+TextureImporter:
+  internalIDToNameTable: []
+  externalObjects: {}
+  serializedVersion: 13
+  mipmaps:
+    mipMapMode: 0
+    enableMipMap: 0
+    sRGBTexture: 1
+    linearTexture: 0
+    fadeOut: 0
+    borderMipMap: 0
+    mipMapsPreserveCoverage: 0
+    alphaTestReferenceValue: 0.5
+    mipMapFadeDistanceStart: 1
+    mipMapFadeDistanceEnd: 3
+  bumpmap:
+    convertToNormalMap: 0
+    externalNormalMap: 0
+    heightScale: 0.25
+    normalMapFilter: 0
+    flipGreenChannel: 0
+  isReadable: 0
+  streamingMipmaps: 0
+  streamingMipmapsPriority: 0
+  vTOnly: 0
+  ignoreMipmapLimit: 0
+  grayScaleToAlpha: 0
+  generateCubemap: 6
+  cubemapConvolution: 0
+  seamlessCubemap: 0
+  textureFormat: 1
+  maxTextureSize: 2048
+  textureSettings:
+    serializedVersion: 2
+    filterMode: 1
+    aniso: 1
+    mipBias: 0
+    wrapU: 1
+    wrapV: 1
+    wrapW: 0
+  nPOTScale: 0
+  lightmap: 0
+  compressionQuality: 50
+  spriteMode: 2
+  spriteExtrude: 1
+  spriteMeshType: 1
+  alignment: 0
+  spritePivot: {x: 0.5, y: 0.5}
+  spritePixelsToUnits: 100
+  spriteBorder: {x: 0, y: 0, z: 0, w: 0}
+  spriteGenerateFallbackPhysicsShape: 1
+  alphaUsage: 1
+  alphaIsTransparency: 1
+  spriteTessellationDetail: -1
+  textureType: 8
+  textureShape: 1
+  singleChannelComponent: 0
+  flipbookRows: 1
+  flipbookColumns: 1
+  maxTextureSizeSet: 0
+  compressionQualitySet: 0
+  textureFormatSet: 0
+  ignorePngGamma: 0
+  applyGammaDecoding: 0
+  swizzle: 50462976
+  cookieLightType: 0
+  platformSettings:
+  - serializedVersion: 3
+    buildTarget: DefaultTexturePlatform
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 3
+    buildTarget: Standalone
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 3
+    buildTarget: WebGL
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  spriteSheet:
+    serializedVersion: 2
+    sprites:
+    - serializedVersion: 2
+      name: "F\xFCt\xFCristik Neon Bilimkurgu HUD Paketi_0"
+      rect:
+        serializedVersion: 2
+        x: 17
+        y: 346
+        width: 215
+        height: 32
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: 0
+      bones: []
+      spriteID: 04f04b3c44bdda949865848ffcee00a7
+      internalID: -92244778
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: "F\xFCt\xFCristik Neon Bilimkurgu HUD Paketi_1"
+      rect:
+        serializedVersion: 2
+        x: 251
+        y: 351
+        width: 182
+        height: 23
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: 0
+      bones: []
+      spriteID: a492ab68baf75ec4bbfa4da5e8a6740c
+      internalID: -837201640
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: "F\xFCt\xFCristik Neon Bilimkurgu HUD Paketi_2"
+      rect:
+        serializedVersion: 2
+        x: 454
+        y: 353
+        width: 142
+        height: 22
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: 0
+      bones: []
+      spriteID: ccb155842dd33a344a62f5967a682ca7
+      internalID: 893999309
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: "F\xFCt\xFCristik Neon Bilimkurgu HUD Paketi_3"
+      rect:
+        serializedVersion: 2
+        x: 99
+        y: 277
+        width: 234
+        height: 37
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: 0
+      bones: []
+      spriteID: 44decb774d95ed3438f0a46005c6e894
+      internalID: -354260841
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: "F\xFCt\xFCristik Neon Bilimkurgu HUD Paketi_4"
+      rect:
+        serializedVersion: 2
+        x: 398
+        y: 218
+        width: 153
+        height: 37
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: 0
+      bones: []
+      spriteID: 01d6e3b9304eca140a877c31d89304de
+      internalID: 1446503334
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: "F\xFCt\xFCristik Neon Bilimkurgu HUD Paketi_5"
+      rect:
+        serializedVersion: 2
+        x: 399
+        y: 172
+        width: 152
+        height: 35
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: 0
+      bones: []
+      spriteID: c2d45767220b6134f8dcb8677a1c81ea
+      internalID: -415617454
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: "F\xFCt\xFCristik Neon Bilimkurgu HUD Paketi_6"
+      rect:
+        serializedVersion: 2
+        x: 399
+        y: 126
+        width: 152
+        height: 35
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: 0
+      bones: []
+      spriteID: a1b3d62ece0e46e4ca7c78ad35a3cbbc
+      internalID: 1412163537
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: "F\xFCt\xFCristik Neon Bilimkurgu HUD Paketi_7"
+      rect:
+        serializedVersion: 2
+        x: 386
+        y: 46
+        width: 60
+        height: 57
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: 0
+      bones: []
+      spriteID: a5170638677c6a446831e6d88f8b69fe
+      internalID: 773086738
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: "F\xFCt\xFCristik Neon Bilimkurgu HUD Paketi_8"
+      rect:
+        serializedVersion: 2
+        x: 461
+        y: 46
+        width: 60
+        height: 57
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: 0
+      bones: []
+      spriteID: 38ff633f9123f2243992e690b203b992
+      internalID: -23111270
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: "F\xFCt\xFCristik Neon Bilimkurgu HUD Paketi_9"
+      rect:
+        serializedVersion: 2
+        x: 542
+        y: 46
+        width: 55
+        height: 51
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: 0
+      bones: []
+      spriteID: 950dcaa2443bcbb469b487f20997f675
+      internalID: -1691324785
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: "F\xFCt\xFCristik Neon Bilimkurgu HUD Paketi_10"
+      rect:
+        serializedVersion: 2
+        x: 22
+        y: 52
+        width: 332
+        height: 196
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: 0
+      bones: []
+      spriteID: c830aa672396930448e9e8c074c4c03c
+      internalID: 1492980717
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    outline: []
+    physicsShape: []
+    bones: []
+    spriteID: 49f21bbb351273644bad0aee969829fb
+    internalID: 0
+    vertices: []
+    indices: 
+    edges: []
+    weights: []
+    secondaryTextures: []
+    nameFileIdTable:
+      "F\xFCt\xFCristik Neon Bilimkurgu HUD Paketi_0": -92244778
+      "F\xFCt\xFCristik Neon Bilimkurgu HUD Paketi_1": -837201640
+      "F\xFCt\xFCristik Neon Bilimkurgu HUD Paketi_10": 1492980717
+      "F\xFCt\xFCristik Neon Bilimkurgu HUD Paketi_2": 893999309
+      "F\xFCt\xFCristik Neon Bilimkurgu HUD Paketi_3": -354260841
+      "F\xFCt\xFCristik Neon Bilimkurgu HUD Paketi_4": 1446503334
+      "F\xFCt\xFCristik Neon Bilimkurgu HUD Paketi_5": -415617454
+      "F\xFCt\xFCristik Neon Bilimkurgu HUD Paketi_6": 1412163537
+      "F\xFCt\xFCristik Neon Bilimkurgu HUD Paketi_7": 773086738
+      "F\xFCt\xFCristik Neon Bilimkurgu HUD Paketi_8": -23111270
+      "F\xFCt\xFCristik Neon Bilimkurgu HUD Paketi_9": -1691324785
+  mipmapLimitGroupName: 
+  pSDRemoveMatte: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

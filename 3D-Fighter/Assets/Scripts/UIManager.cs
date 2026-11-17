@@ -35,13 +35,16 @@ public class UIManager : MonoBehaviour
     [SerializeField] private TMP_Text enemyHealthText;
     [Tooltip("Oyuncu düşmana vurduktan sonra barın ekranda kalma süresi (saniye)")]
     [SerializeField] private float enemyHealthBarVisibleDuration = 2.5f;
-    [Tooltip("Düşmanın kafa kemiğinin (Head) ne kadar üzerinde görüneceği (metre)")]
-    [SerializeField] private float enemyHeadHeightOffset = 0.42f;
-    [Tooltip("Kafa kemiği bulunamazsa düşman tabanından yüksekliği (metre)")]
-    [SerializeField] private float enemyFallbackHeightOffset = 2.05f;
+    [Tooltip("Düşmanın kafa kemiğinin (Head) ne kadar üzerinde görüneceği (1.0 ölçekte metre, karakter ölçeğine göre otomatik uyarlanır)")]
+    [SerializeField] private float enemyHeadHeightOffset = 0.36f;
+    [Tooltip("Kafa kemiği bulunamazsa düşman tabanından yüksekliği (1.0 ölçekte metre, karakter ölçeğine göre otomatik uyarlanır)")]
+    [SerializeField] private float enemyFallbackHeightOffset = 1.85f;
 
     private EnemyController trackedEnemy;
     private Transform trackedEnemyHeadBone;
+    private Collider trackedEnemyCollider;
+    private CanvasGroup enemyHealthBarCanvasGroup;
+    private Vector2 enemyHealthBarHalfSize = new Vector2(105f, 20f);
     private float enemyHealthBarHideTime = 0f;
     private Canvas rootCanvas;
     private RectTransform canvasRectTransform;
@@ -68,16 +71,17 @@ public class UIManager : MonoBehaviour
     [Header("Karakter Seçimi (ScriptableObject & Carousel)")]
     [Tooltip("7 karakterin verisini tutan ScriptableObject (Boş bırakılırsa Resources/CharacterDatabase otomatik yüklenir)")]
     [SerializeField] private CharacterDatabaseSO characterDatabase;
-    [Tooltip("CharacterChooseUI üzerindeki RawImage bileşeni (Assets/Character Texture içindeki RenderTexture'ları gösterir)")]
+    [Tooltip("CharacterChooseUI altındaki CharacterChoose Image üzerindeki RawImage bileşeni (Assets/Character Texture içindeki RenderTexture'ları gösterir)")]
     [SerializeField] private RawImage characterChooseRawImage;
-    [Tooltip("CharacterChooseUI altındaki Character Name Text bileşeni")]
+    [Tooltip("Character Name BG altındaki Character Name Text bileşeni")]
     [SerializeField] private TMP_Text characterNameText;
-    [Tooltip("Karakteri onaylamak için tıklanan CharacterChooseUI butonu")]
+    [Tooltip("Karakteri onaylamak için tıklanan CharacterChoose Image / CharacterChooseUI butonu")]
     [SerializeField] private Button characterChooseButton;
     [Tooltip("Sonraki karaktere geçen Next Button")]
     [SerializeField] private Button nextCharacterButton;
     [Tooltip("Önceki karaktere geçen Previous Button")]
     [SerializeField] private Button previousCharacterButton;
+    private Text legacyCharacterNameText;
     [SerializeField] private GameObject[] characterPrefabs;
     [SerializeField] private Transform playerSpawnPoint;
     private int currentCharacterIndex = 0;
@@ -743,48 +747,95 @@ public class UIManager : MonoBehaviour
         }
     }
 
+    private static Transform FindDescendantByName(Transform parent, string targetName)
+    {
+        if (parent == null || string.IsNullOrEmpty(targetName)) return null;
+
+        for (int i = 0; i < parent.childCount; i++)
+        {
+            Transform child = parent.GetChild(i);
+            if (child == null) continue;
+            if (child.name.Trim().Equals(targetName, System.StringComparison.OrdinalIgnoreCase))
+            {
+                return child;
+            }
+
+            Transform nested = FindDescendantByName(child, targetName);
+            if (nested != null)
+            {
+                return nested;
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>
-    /// Character Choose panelindeki CharacterChooseUI (RawImage + Button), Character Name Text,
-    /// Next Button ve Previous Button referanslarını bulur ve olaylarını (onClick) bağlar.
+    /// Character Choose panelindeki CharacterChooseUI altındaki CharacterChoose Image (RawImage + Button),
+    /// Character Name BG altındaki Character Name Text, Next Button ve Previous Button referanslarını bulur ve bağlar.
     /// </summary>
     private void BindCharacterSelectionUI()
     {
         if (characterPanel == null) FindCharacterPanel();
         if (characterPanel == null) return;
 
-        // 1. CharacterChooseUI (RawImage & Button) ve altındaki Character Name Text'i bul
-        Transform chooseUiTransform = characterPanel.transform.Find("CharacterChooseUI");
-        if (chooseUiTransform == null)
+        // 1. CharacterChooseUI -> CharacterChoose Image (RawImage & Button) ve Character Name BG -> Character Name Text'i bul
+        Transform chooseUiTransform = FindDescendantByName(characterPanel.transform, "CharacterChooseUI");
+        Transform searchRoot = chooseUiTransform != null ? chooseUiTransform : characterPanel.transform;
+
+        Transform chooseImageTransform = FindDescendantByName(searchRoot, "CharacterChoose Image")
+            ?? FindDescendantByName(searchRoot, "CharacterChooseImage");
+        if (chooseImageTransform == null)
         {
-            RawImage[] rawImages = characterPanel.GetComponentsInChildren<RawImage>(true);
-            if (rawImages != null && rawImages.Length > 0)
+            RawImage firstRawImage = searchRoot.GetComponentInChildren<RawImage>(true);
+            if (firstRawImage != null)
             {
-                chooseUiTransform = rawImages[0].transform;
+                chooseImageTransform = firstRawImage.transform;
             }
         }
 
-        if (chooseUiTransform != null)
+        if (characterChooseRawImage == null)
         {
+            if (chooseImageTransform != null)
+            {
+                characterChooseRawImage = chooseImageTransform.GetComponent<RawImage>();
+            }
             if (characterChooseRawImage == null)
             {
-                characterChooseRawImage = chooseUiTransform.GetComponent<RawImage>();
+                characterChooseRawImage = searchRoot.GetComponentInChildren<RawImage>(true);
             }
+        }
 
-            if (characterChooseButton == null)
+        if (characterChooseButton == null)
+        {
+            if (chooseImageTransform != null)
             {
-                characterChooseButton = chooseUiTransform.GetComponent<Button>();
+                characterChooseButton = chooseImageTransform.GetComponent<Button>();
             }
-
-            if (characterNameText == null)
+            if (characterChooseButton == null && chooseUiTransform != null)
             {
-                Transform nameTextT = chooseUiTransform.Find("Character Name Text");
-                if (nameTextT != null)
-                {
-                    characterNameText = nameTextT.GetComponent<TMP_Text>();
-                }
+                characterChooseButton = chooseUiTransform.GetComponent<Button>()
+                    ?? chooseUiTransform.GetComponentInChildren<Button>(true);
+            }
+        }
+
+        if (characterNameText == null && legacyCharacterNameText == null)
+        {
+            Transform nameBgTransform = FindDescendantByName(searchRoot, "Character Name BG")
+                ?? FindDescendantByName(searchRoot, "CharacterNameBG");
+            Transform nameTextTarget = (nameBgTransform != null
+                ? (FindDescendantByName(nameBgTransform, "Character Name Text") ?? nameBgTransform)
+                : FindDescendantByName(searchRoot, "Character Name Text"))
+                ?? chooseUiTransform;
+
+            if (nameTextTarget != null)
+            {
+                characterNameText = nameTextTarget.GetComponent<TMP_Text>()
+                    ?? nameTextTarget.GetComponentInChildren<TMP_Text>(true);
                 if (characterNameText == null)
                 {
-                    characterNameText = chooseUiTransform.GetComponentInChildren<TMP_Text>(true);
+                    legacyCharacterNameText = nameTextTarget.GetComponent<Text>()
+                        ?? nameTextTarget.GetComponentInChildren<Text>(true);
                 }
             }
         }
@@ -804,7 +855,8 @@ public class UIManager : MonoBehaviour
             {
                 previousCharacterButton = btn;
             }
-            else if (characterChooseButton == null && btn.gameObject.name.IndexOf("CharacterChooseUI", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            else if (characterChooseButton == null &&
+                     (lowerName.Contains("characterchoose") || lowerName.Contains("character choose")))
             {
                 characterChooseButton = btn;
             }
@@ -885,9 +937,14 @@ public class UIManager : MonoBehaviour
             characterChooseRawImage.texture = entry.previewTexture;
         }
 
+        string displayText = !string.IsNullOrEmpty(entry.displayName) ? entry.displayName : entry.characterId;
         if (characterNameText != null)
         {
-            characterNameText.SetText(entry.displayName);
+            characterNameText.SetText(displayText);
+        }
+        if (legacyCharacterNameText != null)
+        {
+            legacyCharacterNameText.text = displayText;
         }
 
         selectedCharacterName = entry.characterId;
@@ -1563,7 +1620,24 @@ public class UIManager : MonoBehaviour
             if (g != null) g.raycastTarget = false;
         }
 
+        enemyHealthBarCanvasGroup = enemyHealthBarPanel.GetComponent<CanvasGroup>();
+        if (enemyHealthBarCanvasGroup == null)
+        {
+            enemyHealthBarCanvasGroup = enemyHealthBarPanel.AddComponent<CanvasGroup>();
+        }
+        enemyHealthBarCanvasGroup.blocksRaycasts = false;
+        enemyHealthBarCanvasGroup.interactable = false;
+
         NormalizeEnemyHealthBarLayout();
+        enemyHealthBarHalfSize = ComputeEnemyBarHalfSize(enemyHealthBarPanel.GetComponent<RectTransform>());
+    }
+
+    private void SetEnemyHealthBarVisible(bool visible)
+    {
+        if (enemyHealthBarCanvasGroup != null)
+        {
+            enemyHealthBarCanvasGroup.alpha = visible ? 1f : 0f;
+        }
     }
 
     /// <summary>
@@ -1574,6 +1648,14 @@ public class UIManager : MonoBehaviour
     {
         if (enemyHealthBarNormalized || enemyHealthBarPanel == null) return;
         enemyHealthBarNormalized = true;
+
+        RectTransform panelRt = enemyHealthBarPanel.GetComponent<RectTransform>();
+        if (panelRt != null)
+        {
+            panelRt.anchorMin = new Vector2(0.5f, 0.5f);
+            panelRt.anchorMax = new Vector2(0.5f, 0.5f);
+            panelRt.pivot = new Vector2(0.5f, 0.5f);
+        }
 
         Transform panelT = enemyHealthBarPanel.transform;
         if (panelT.childCount == 0) return;
@@ -1622,6 +1704,7 @@ public class UIManager : MonoBehaviour
             trackedEnemy = enemy;
             Animator anim = enemy.GetComponent<Animator>() ?? enemy.GetComponentInChildren<Animator>();
             trackedEnemyHeadBone = (anim != null && anim.isHuman) ? anim.GetBoneTransform(HumanBodyBones.Head) : null;
+            trackedEnemyCollider = enemy.GetComponent<Collider>() ?? enemy.GetComponentInChildren<Collider>();
         }
 
         float maxHp = Mathf.Max(1f, enemy.MaxHealth);
@@ -1646,6 +1729,7 @@ public class UIManager : MonoBehaviour
         {
             enemyHealthBarPanel.SetActive(true);
         }
+        SetEnemyHealthBarVisible(true);
 
         UpdateEnemyHealthBarTracking();
     }
@@ -1660,6 +1744,51 @@ public class UIManager : MonoBehaviour
                (victoryPanel == null || !victoryPanel.activeSelf);
     }
 
+    private Vector3 GetEnemyHeadWorldPosition()
+    {
+        float enemyScale = Mathf.Clamp(trackedEnemy.transform.lossyScale.y, 0.35f, 1.5f);
+
+        if (trackedEnemyHeadBone != null)
+        {
+            Vector3 horizontalBase = Vector3.Lerp(trackedEnemy.transform.position, trackedEnemyHeadBone.position, 0.65f);
+            float minStandingHeadY = trackedEnemy.transform.position.y + 0.45f * enemyScale;
+            float headY = Mathf.Max(trackedEnemyHeadBone.position.y, minStandingHeadY) + enemyHeadHeightOffset * enemyScale;
+            return new Vector3(horizontalBase.x, headY, horizontalBase.z);
+        }
+
+        if (trackedEnemyCollider != null)
+        {
+            return new Vector3(
+                trackedEnemy.transform.position.x,
+                trackedEnemyCollider.bounds.max.y + 0.12f * enemyScale,
+                trackedEnemy.transform.position.z
+            );
+        }
+
+        return trackedEnemy.transform.position + Vector3.up * (enemyFallbackHeightOffset * enemyScale);
+    }
+
+    private static Vector2 ComputeEnemyBarHalfSize(RectTransform barRect)
+    {
+        if (barRect == null) return new Vector2(105f, 20f);
+
+        float scaleX = Mathf.Abs(barRect.localScale.x);
+        float scaleY = Mathf.Abs(barRect.localScale.y);
+        float halfW = barRect.rect.width * 0.5f * scaleX;
+        float halfH = barRect.rect.height * 0.5f * scaleY;
+
+        Image[] images = barRect.GetComponentsInChildren<Image>(true);
+        for (int i = 0; i < images.Length; i++)
+        {
+            if (images[i] == null) continue;
+            RectTransform childRt = images[i].rectTransform;
+            halfW = Mathf.Max(halfW, childRt.rect.width * 0.5f * scaleX);
+            halfH = Mathf.Max(halfH, childRt.rect.height * 0.5f * scaleY);
+        }
+
+        return new Vector2(halfW > 0f ? halfW : 105f, halfH > 0f ? halfH : 20f);
+    }
+
     private void UpdateEnemyHealthBarTracking()
     {
         if (enemyHealthBarPanel == null || !enemyHealthBarPanel.activeSelf) return;
@@ -1669,6 +1798,7 @@ public class UIManager : MonoBehaviour
             enemyHealthBarPanel.SetActive(false);
             trackedEnemy = null;
             trackedEnemyHeadBone = null;
+            trackedEnemyCollider = null;
             return;
         }
 
@@ -1693,29 +1823,15 @@ public class UIManager : MonoBehaviour
         Camera cam = Camera.main;
         if (cam == null) return;
 
-        Vector3 headWorldPos;
-        if (trackedEnemyHeadBone != null)
-        {
-            Vector3 horizontalBase = Vector3.Lerp(trackedEnemy.transform.position, trackedEnemyHeadBone.position, 0.5f);
-            float headY = Mathf.Max(trackedEnemyHeadBone.position.y + enemyHeadHeightOffset, trackedEnemy.transform.position.y + 1.85f);
-            headWorldPos = new Vector3(horizontalBase.x, headY, horizontalBase.z);
-        }
-        else
-        {
-            headWorldPos = trackedEnemy.transform.position + Vector3.up * enemyFallbackHeightOffset;
-        }
-
+        Vector3 headWorldPos = GetEnemyHeadWorldPosition();
         Vector3 screenPos = cam.WorldToScreenPoint(headWorldPos);
-        if (screenPos.z <= 0f)
+        if (screenPos.z <= 0.05f)
         {
+            SetEnemyHealthBarVisible(false);
             return;
         }
 
-        // Ekran sınırları içinde tut
-        float marginX = 60f;
-        float marginY = 35f;
-        screenPos.x = Mathf.Clamp(screenPos.x, marginX, Screen.width - marginX);
-        screenPos.y = Mathf.Clamp(screenPos.y, marginY, Screen.height - marginY);
+        SetEnemyHealthBarVisible(true);
 
         EnsureCanvasReference();
         if (canvasRectTransform != null)
@@ -1724,19 +1840,29 @@ public class UIManager : MonoBehaviour
                 ? rootCanvas.worldCamera
                 : null;
 
-            if (RectTransformUtility.ScreenPointToWorldPointInRectangle(canvasRectTransform, screenPos, uiCam, out Vector3 uiWorldPos))
+            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRectTransform, screenPos, uiCam, out Vector2 localPos))
             {
-                enemyHealthBarPanel.transform.position = uiWorldPos;
-            }
-            else
-            {
-                enemyHealthBarPanel.transform.position = screenPos;
+                Rect canvasRect = canvasRectTransform.rect;
+                float padX = 12f;
+                float padY = 12f;
+                float minX = canvasRect.xMin + enemyHealthBarHalfSize.x + padX;
+                float maxX = canvasRect.xMax - enemyHealthBarHalfSize.x - padX;
+                float minY = canvasRect.yMin + enemyHealthBarHalfSize.y + padY;
+                float maxY = canvasRect.yMax - enemyHealthBarHalfSize.y - padY;
+
+                localPos.x = minX <= maxX ? Mathf.Clamp(localPos.x, minX, maxX) : canvasRect.center.x;
+                localPos.y = minY <= maxY ? Mathf.Clamp(localPos.y, minY, maxY) : canvasRect.center.y;
+
+                enemyHealthBarPanel.transform.position = canvasRectTransform.TransformPoint(new Vector3(localPos.x, localPos.y, 0f));
+                return;
             }
         }
-        else
-        {
-            enemyHealthBarPanel.transform.position = screenPos;
-        }
+
+        float fallbackMarginX = 110f;
+        float fallbackMarginY = 30f;
+        screenPos.x = Mathf.Clamp(screenPos.x, fallbackMarginX, Screen.width - fallbackMarginX);
+        screenPos.y = Mathf.Clamp(screenPos.y, fallbackMarginY, Screen.height - fallbackMarginY);
+        enemyHealthBarPanel.transform.position = screenPos;
     }
 
     // =========================================================================
